@@ -9,6 +9,10 @@ for each group.
 import re
 import ipdb
 
+
+
+
+
 results_user_id_regex_str = "(\d+)"
 results_user_id_regex = re.compile(results_user_id_regex_str)
 
@@ -102,6 +106,35 @@ def agg_ranking_average(rec_rankings):
     return ranking
 
 
+
+def agg_ranking_borda(rec_rankings):
+
+    borda_scores = {}
+
+    for rank in rec_rankings:
+        for item_pos,item in enumerate(rank):
+            item_id,item_score = item
+            if item_id in borda_scores:
+                borda_scores[item_id] += len(rank)-item_pos
+            else:
+                borda_scores[item_id] = len(rank)-item_pos
+
+    final_ranking = sorted([(item,borda_scores[item]) for item in borda_scores], 
+                key = lambda tup : tup[1], reverse = True)
+
+
+    return final_ranking
+
+def save_group_rankings(group_rankings,out_file_path):    
+
+    with (open(out_file_path,'w')) as out_file:
+        for group_id in group_rankings:
+            str_aux = str(group_id) + '\t['
+            str_aux += ','.join(
+                        [str(item[0])+":"+ str(item[1]) for item in group_rankings[group_id] ])
+            str_aux += ']\n'
+            out_file.write(str_aux)
+
 #def agg_rating_average(rec_ratings):
 
 
@@ -113,13 +146,22 @@ def run_grs_ranking(recommendation_file,groups_file):
     groups = read_groups(groups_file)
     users_rankings = rankings_dict(recommendation_file,rank_size=10)
 
-    for group in groups:        
-        rankings = [users_rankings[user] for user in group]
-        ipdb.set_trace()
-        agg_average_ranking(rankings)
+    avg_group_rec = {}
+    LM_group_rec = {}        
+    borda_group_rec = {}
+    for group_i, group in enumerate(groups):        
+        rankings = [users_rankings[user] for user in group]        
+        #group_ranking_avg = agg_average_ranking(rankings)
+        avg_group_rec[group_i] = agg_ranking_average(rankings)        
+        #group_ranking_LM = agg_least_misery_ranking(rankings)
+        LM_group_rec[group_i] = agg_ranking_least_misery(rankings)
+        borda_group_rec[group_i] = agg_ranking_borda(rankings)
 
 
 
+    save_group_rankings(avg_group_rec,'avg.out')
+    save_group_rankings(LM_group_rec,'lm.out')
+    save_group_rankings(borda_group_rec,'borda.out')
 #def run_grs(recommendation_file,groups_file,rank=True):
 
 
