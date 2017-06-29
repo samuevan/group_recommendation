@@ -8,6 +8,7 @@ import numpy as np
 import math
 import ipdb
 import os
+import re
 import sys
 import random
 import matplotlib.pyplot as plt
@@ -31,6 +32,12 @@ def read_ratings_file(addr, sep="\t",default_headers=input_headers,default_types
     return frame
 
 
+results_user_id_regex_str = "(\d+)"
+results_user_id_regex = re.compile(results_user_id_regex_str)
+
+float_regex = r'[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?'
+results_items_regex_str = "(\d+):({0})".format(float_regex)
+results_items_regex = re.compile(results_items_regex_str)
 
 def rankings_dict(path,rank_size=100):
     """Generates a dictionary from a file of ranking algorithm results.
@@ -108,10 +115,14 @@ def grs_precision_at(rank_recomm, ground_truth,num_items_to_eval=10):
     #print rank_recomm
     #print test
     #Considerando somente os 100 primeiros
-    for i in range(num_items_to_eval):
+    #ipdb.set_trace()
+    for i in range(min(num_items_to_eval,len(rank_recomm))):
         kx = rank_recomm[i] #cada linha tem um item e o score da regressao
-        #kx_in_test = [True for item_rat in test if item_rat[0] == kx] 
+        if kx.__class__ == tuple:
+            kx = kx[0]
+        #kx_in_test = [True for item_rat in test if item_rat[0] == kx]         
         if kx in ground_truth: #len(kx_in_test) > 0:
+            #print(kx)
             hits = hits+1;
 
     prec = hits/num_items_to_eval
@@ -122,17 +133,24 @@ def grs_precision_at(rank_recomm, ground_truth,num_items_to_eval=10):
 
 if __name__ == "__main__":
 
-    input_ranking = sys.argv[1]
+    input_ranking_file = sys.argv[1]
     groups_file = sys.argv[2]
     test_file = sys.argv[3]
 
-    input_ranking = rankings_dict(input_ranking,10)
+    input_ranking = rankings_dict(input_ranking_file,10)
     groups = read_groups(groups_file)
     test = read_ratings_file(test_file)
         
-    ipdb.set_trace()
     groups_gt = construct_groups_ground_truth(groups,test)
+    #ipdb.set_trace()
 
-    for group in groups:
-        prec = grs_precision_at()
-    
+    prec = 0.0
+    num_groups_with_test = 0.0
+    for grp_id, group in enumerate(groups):
+        prec += grs_precision_at(input_ranking[grp_id],groups_gt[grp_id])
+        if len(groups_gt[grp_id]) > 0:
+            num_groups_with_test += 1
+
+    final_prec = prec/num_groups_with_test
+    print(final_prec)
+        

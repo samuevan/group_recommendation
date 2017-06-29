@@ -7,6 +7,8 @@ for each group.
 
 
 import re
+import sys
+import groups_generator as gg
 import ipdb
 
 
@@ -125,6 +127,16 @@ def agg_ranking_borda(rec_rankings):
 
     return final_ranking
 
+
+def oraculus(rec_rankings,group,test):
+    #group ground truth. i.e the items shared by the members of the group in the test set
+    group_gt = [(x,1.0) for x in list(gg.group_intersection(group,test))]
+    
+    for i in range(len(group),10):
+        group_gt.append((9999999,0.0001))
+    
+    return group_gt
+
 def save_group_rankings(group_rankings,out_file_path):    
 
     with (open(out_file_path,'w')) as out_file:
@@ -142,13 +154,18 @@ def save_group_rankings(group_rankings,out_file_path):
 
 
 
-def run_grs_ranking(recommendation_file,groups_file):    
+def run_grs_ranking(recommendation_file,groups_file,test_file):    
+    ipdb.set_trace()
+    
     groups = read_groups(groups_file)
     users_rankings = rankings_dict(recommendation_file,rank_size=10)
+    #TODO preciso adicionar o arquivo de treino para conferir se o item não foi visto por nenhum usuario do grupo
+    test = gg.read_ratings_file(test_file)
 
     avg_group_rec = {}
     LM_group_rec = {}        
     borda_group_rec = {}
+    oraculus_group_rec = {}
     for group_i, group in enumerate(groups):        
         rankings = [users_rankings[user] for user in group]        
         #group_ranking_avg = agg_average_ranking(rankings)
@@ -156,13 +173,20 @@ def run_grs_ranking(recommendation_file,groups_file):
         #group_ranking_LM = agg_least_misery_ranking(rankings)
         LM_group_rec[group_i] = agg_ranking_least_misery(rankings)
         borda_group_rec[group_i] = agg_ranking_borda(rankings)
+        oraculus_group_rec[group_i] = oraculus(rankings,group,test)
 
 
+    save_group_rankings(avg_group_rec,groups_file+'_avg.out')
+    save_group_rankings(LM_group_rec,groups_file+'_lm.out')
+    save_group_rankings(borda_group_rec,groups_file+'_borda.out')
+    save_group_rankings(oraculus_group_rec,groups_file+'_GT.out')
 
-    save_group_rankings(avg_group_rec,'avg.out')
-    save_group_rankings(LM_group_rec,'lm.out')
-    save_group_rankings(borda_group_rec,'borda.out')
-#def run_grs(recommendation_file,groups_file,rank=True):
+
+if __name__ == '__main__':
+
+    run_grs_ranking(sys.argv[1],sys.argv[2],sys.argv[3])    
+
+
 
 
 
