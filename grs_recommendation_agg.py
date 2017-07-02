@@ -7,9 +7,11 @@ for each group.
 
 
 import re
+import os
 import sys
 import groups_generator as gg
 import ipdb
+import argparse
 
 
 
@@ -64,24 +66,68 @@ def read_groups(path,return_dict=False):
 
     return groups
 
-'''
-input: reveives a set of rankings recommended to the users of a group
-output: An aggregated ranking ordered by the least misery of the items scores
 
+
+'''
+verify if the items are present in the training file for any of the users
+need to use average.keys() instead of just pass by the dictionary in order 
+to avoid the error : dictionary size changed size during iteration
+'''
+def remove_items_in_train(train_DF,group,rank):
+
+
+    if rank.__class__ == dict:
+        items_in_rank = rank.keys()
+    else:
+        items_in_rank = [x for x,_ in rank]
+
+
+    items_to_remove = []
+
+    items_union = gg.group_union(group,train_DF)
+
+    for item in items_in_rank:
+        if item in items_union:
+            items_to_remove.append(item)
+
+
+    for item in items_to_remove:     
+        if rank.__class__ == dict:                
+            rank.pop(item)
+        else:
+            #TODO too costy
+            rank = [(x,y) for x in rank if x!= item]
+
+
+
+'''
+input: 
+rec_rankings: reveives a set of rankings recommended to the users of a group
+train_DF : Pandas Dataframe containing the train file used by base recommender
+
+output: An aggregated ranking ordered by the least misery of the items scores
 TODO: verify if we need to normalize the items scores
 '''
-def agg_ranking_least_misery(rec_rankings):
+
+def agg_ranking_least_misery(rec_rankings,group,train_DF,i2sug=10):
     averages = {}
+    #Loop through users in the group and their recommend rankings
     for rank in rec_rankings:
-        for item,item_score in rank:
+        for item,item_score in rank:                
             if item in averages:
                 averages[item] = min(item_score, averages[item] )
             else:
                 averages[item] = item_score
 
+    #remove the items present in the train dataset for any of the users
+    remove_items_in_train(train_DF,group,averages)
+        
     group_size = len(rec_rankings)
-    ranking = sorted([(item,averages[item]/group_size) for item in averages], 
-                key = lambda tup : tup[1], reverse = True)
+
+    ranking = [(item,averages[item]) for item in averages]         
+    
+    ranking = sorted(ranking,key = lambda tup : tup[1], reverse = True)[:i2sug]
+
     return ranking
 
 
@@ -93,7 +139,7 @@ output: An aggregated ranking ordered by the average of the items scores
 
 TODO: verify if we need to normalize the items scores
 '''
-def agg_ranking_average(rec_rankings):
+def agg_ranking_average(rec_rankings,group,train_DF,i2sug=10):
     averages = {}
     for rank in rec_rankings:
         for item,item_score in rank:
@@ -102,14 +148,17 @@ def agg_ranking_average(rec_rankings):
             else:
                 averages[item] = item_score
 
+    #remove the items present in the train dataset for any of the users
+    remove_items_in_train(train_DF,group,averages)
+
     group_size = len(rec_rankings)
-    ranking = sorted([(item,averages[item]/group_size) for item in averages], 
-                key = lambda tup : tup[1], reverse = True)
+    ranking = [(item,averages[item]/group_size) for item in averages] 
+    ranking = sorted(ranking,key = lambda tup : tup[1], reverse = True)[:i2sug]
     return ranking
 
 
 
-def agg_ranking_borda(rec_rankings):
+def agg_ranking_borda(rec_rankings,group,train_DF,i2sug=10):
 
     borda_scores = {}
 
@@ -121,25 +170,42 @@ def agg_ranking_borda(rec_rankings):
             else:
                 borda_scores[item_id] = len(rank)-item_pos
 
-    final_ranking = sorted([(item,borda_scores[item]) for item in borda_scores], 
-                key = lambda tup : tup[1], reverse = True)
 
+    #remove the items present in the train dataset for any of the users
+    remove_items_in_train(train_DF,group,borda_scores)
+
+    final_ranking = [(item,borda_scores[item]) for item in borda_scores]
+    final_ranking = sorted(final_ranking,key = lambda tup : tup[1], reverse = True)[:i2sug]
 
     return final_ranking
 
 
-def oraculus(rec_rankings,group,test):
+def oraculus(rec_rankings,group,train_DF,test_DF,i2sug=10):
     #group ground truth. i.e the items shared by the members of the group in the test set
-    group_gt = [(x,1.0) for x in list(gg.group_intersection(group,test))]
+    intersection_test = list(gg.group_intersection(group,test_DF))
+
+    group_gt = [(x,1.0) for x in intersection_test]
     
-    for i in range(len(group),10):
+    #remove the items present in the train dataset for any of the users
+    remove_items_in_train(train_DF,group,group_gt)
+
+    for i in range(len(group),i2sug):
         group_gt.append((9999999,0.0001))
     
-    return group_gt
+    return group_gt[:i2sug]
+
+
+
+
+    
+
 
 def save_group_rankings(group_rankings,out_file_path):    
 
+    print(out_file_path)
+
     with (open(out_file_path,'w')) as out_file:
+        print("Saving "+out_file_path)
         for group_id in group_rankings:
             str_aux = str(group_id) + '\t['
             str_aux += ','.join(
@@ -153,38 +219,96 @@ def save_group_rankings(group_rankings,out_file_path):
 #def agg_average(recomendations,rank=True)
 
 
+def parse_args():
+    p = argparse.ArgumentParser()
 
-def run_grs_ranking(recommendation_file,groups_file,test_file):    
-    ipdb.set_trace()
+    p.add_argument('--base_dir',type=str,required=True,
+        help = 'folder containg the datasets')
+    p.add_argument('-p','--part',type=str,default='u1',
+        help='Partition to be used')
+    p.add_argument('--base_rec',type=str,required=True,
+        help='The file containing the recommendations performed by a base recommender')
+    p.add_argument('--groups_file',type=str,required=True,
+        help='The file containing the groups of users to whom the recommendation will be made')
+    p.add_argument('--test_file', type=str,
+        help='The file containing the test file. It will be used to construct the oraculus recommendation')    
+    p.add_argument('--train_file',type=str,
+        help='The file containing the training file used by the base recommender')
+    p.add_argument('-o','--out_dir',type=str,default='',
+        help='Output folder. The group recommendations will be saved in this foder')
+
+    p.add_argument('--i2use',type=int,default=20,
+        help='Size of the input rankings')
+    p.add_argument('--i2sug',type=int,default=10,
+        help='Size of the outrput rankings')
+
+    parsed = p.parse_args()
+    #ipdb.set_trace()
+    if parsed.out_dir == '':
+        parsed.out_dir = parsed.base_dir
+
+    base_rec_path = parsed.part + "-" + parsed.base_rec + ".out"
+    parsed.base_rec = os.path.join(parsed.base_dir,base_rec_path)
+
+    parsed.test_file = os.path.join(parsed.base_dir,parsed.part+'.test')
+    parsed.train_file = os.path.join(parsed.base_dir,parsed.part+'.base')
+
+    parsed.groups_file = parsed.groups_file.replace('u1',parsed.part)
+
+
+    return parsed
+
+
+
+def run_grs_ranking():    
+
     
-    groups = read_groups(groups_file)
-    users_rankings = rankings_dict(recommendation_file,rank_size=10)
+    args = parse_args()
+
+    groups = read_groups(args.groups_file)
+
+    users_rankings = rankings_dict(args.base_rec,rank_size=args.i2use)
+
     #TODO preciso adicionar o arquivo de treino para conferir se o item não foi visto por nenhum usuario do grupo
-    test = gg.read_ratings_file(test_file)
+    test = gg.read_ratings_file(args.test_file)
+    train = gg.read_ratings_file(args.train_file)
 
     avg_group_rec = {}
     LM_group_rec = {}        
     borda_group_rec = {}
     oraculus_group_rec = {}
-    for group_i, group in enumerate(groups):        
+
+    for group_i, group in enumerate(groups):
+        if group_i%300 == 0:
+            print(group_i)
+                 
         rankings = [users_rankings[user] for user in group]        
         #group_ranking_avg = agg_average_ranking(rankings)
-        avg_group_rec[group_i] = agg_ranking_average(rankings)        
+        avg_group_rec[group_i] = agg_ranking_average(rankings,group,train,args.i2sug)        
         #group_ranking_LM = agg_least_misery_ranking(rankings)
-        LM_group_rec[group_i] = agg_ranking_least_misery(rankings)
-        borda_group_rec[group_i] = agg_ranking_borda(rankings)
-        oraculus_group_rec[group_i] = oraculus(rankings,group,test)
+        LM_group_rec[group_i] = agg_ranking_least_misery(rankings,group,train,args.i2sug)
+        borda_group_rec[group_i] = agg_ranking_borda(rankings,group,train,args.i2sug)
+        oraculus_group_rec[group_i] = oraculus(rankings,group,train,test,args.i2sug)
 
 
-    save_group_rankings(avg_group_rec,groups_file+'_avg.out')
-    save_group_rankings(LM_group_rec,groups_file+'_lm.out')
-    save_group_rankings(borda_group_rec,groups_file+'_borda.out')
-    save_group_rankings(oraculus_group_rec,groups_file+'_GT.out')
+    if not os.path.isdir(args.out_dir):
+        os.mkdir(args.out_dir)
+
+    print("here saving my favorite rankings")
+    out_file = os.path.basename(args.base_rec).replace('.out','')
+    out_file += os.path.basename(args.groups_file).replace(args.part+'.groups','')
+    out_file = os.path.join(args.out_dir,out_file)
+
+    save_group_rankings(avg_group_rec,out_file+'_avg.out')
+    save_group_rankings(LM_group_rec,out_file+'_lm.out')
+    save_group_rankings(borda_group_rec,out_file+'_borda.out')
+    save_group_rankings(oraculus_group_rec,out_file+'_GT.out')
 
 
 if __name__ == '__main__':
 
-    run_grs_ranking(sys.argv[1],sys.argv[2],sys.argv[3])    
+
+    run_grs_ranking()    
 
 
 
