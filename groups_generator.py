@@ -64,7 +64,7 @@ def save_groups(groups,out_file):
 
 
 
-def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=5,simi_func=pearsonr):
+def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=10,simi_func=pearsonr):
 
     #we can pass the DataFrame for the first user directly
     if user_a_DF.__class__ == pd.DataFrame:
@@ -242,7 +242,7 @@ def construct_group(initial_dataset, users_similarity_matrix,
         #    simi = users_similarity_matrix[first_user][usr2]
 
         attempts = 0
-        while simi < threshold or usr2 == first_user:
+        while simi < threshold or usr2 in group_users:
             
             #no caso de rodar muitas vezes e nao encontrar outro user similar ao primeiro
             #escolho outro usuario como semente
@@ -282,9 +282,116 @@ def construct_group(initial_dataset, users_similarity_matrix,
 
 
 '''
+this function returns statistics for the groups
+The number of unique users
+The number of groups with items in the dataset
+The number medium number of items for each group (for all groups and for the groups with items)
+The average groups correlation
+ 
+
+'''
+def compute_group_statistics(groups,dataset):
+
+    intersection = [group_intersection(g,dataset) for g in groups]
+
+    items_per_group = []
+    groups_with_items = 0
+    for group in intersection:
+        items_per_group.append(len(group))
+        if items_per_group[-1] > 0:
+            groups_with_items += 1
+
+    unique_users = set()    
+    for g in groups:
+        for u in g:
+            unique_users.add(u)
+   
+    avg_corr_total = 0.0
+    '''for g in groups:
+        avg_corr_g = 0
+        i = 0
+        for u1,u2 in combinations(g,2):
+            x = calc_similarity(u1,u2,dataset)[0]
+            #print(x)
+            #ipdb.set_trace()
+            #print("{0} {1} {2}".format(u1,u2,x))                    
+            avg_corr_g += x
+            i += 1
+                
+        avg_corr_total += avg_corr_g/i
+        #print(avg_corr_total)
+    avg_corr_total /= len(groups)'''
+
+    out = 'Unique users {0}\nGroups with items {1}\n'
+    out +='Medium number of group items{2}\nAvg. Group Correlation{3}'
+
+    print(out.format(len(unique_users),groups_with_items,sum(items_per_group)/len(groups),avg_corr_total))
+
+
+
+
+    #print("Size:{0} Thresh:{1} Num groups with elems in test: {2}\n".format(args.group_size,args.t_value, str(groups_with_test)))
+    #print("Average correlation {0}\n".format(avg_corr_total))
+
+
+'''
+Input: This function receives as parameter a set of groups and the dataframe used to 
+construct the groups.
+
+Output: The set of items that should be put in the test set for each user
+         according to the groups 
+'''
+def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2):
+    ipdb.set_trace()
+    users_test = {}
+    groups_with_test = 0
+    groups_with_items = 0
+    for group_id, group in enumerate(groups):
+        #ipdb.set_trace()
+        items_intersec = list(group_intersection(group,initial_dataframe))
+        size_test = int(0.2 * len(items_intersec))
+        if len(items_intersec) > 0:
+            groups_with_items += 1
+        #size_test >= 1:
+        #    ipdb.set_trace()
+        #add the user in the final users_test dictionary
+        for user in group:
+           if not user in users_test:
+               users_test.update([(user,set())])
+
+        #check which items in the group intersection are already placed 
+        #in the test partition for the group users        
+        items_already_in_test = users_test[group[0]]
+        for user in group[1:]:
+            items_already_in_test = items_already_in_test.intersection(users_test[user])
+        
+        num_items_to_choose = size_test - len(items_already_in_test)
+
+        if num_items_to_choose > 1:
+            groups_with_test += 1
+
+        #choose the items to be inserted in test
+        new_items = []
+        while num_items_to_choose > 0:
+            new_item = items_intersec[random.randint(0,len(items_intersec)-1)]
+            if not new_item in items_already_in_test:
+                new_items.append(new_item)
+                num_items_to_choose -= 1
+
+        #insert the items in the final structure
+        for item_to_insert in new_items:
+            for user in group:
+                users_test[user].add(item_to_insert)
+                    
+    l = len([users_test[x] for x in users_test if len(users_test[x]) > 0])
+    print("{0} groups with test {1} groups with item {2} users with test {3} total users".format(groups_with_test,groups_with_items,l,len(users_test)))
+    #return users_test
+
+
+'''
 Return groups of similar users
 '''
-def similarity_groups(initial_dataset, out_file, 
+def similarity_groups(initial_dataset,
         similarity_function=pearsonr,
         group_size=4, 
         num_groups=3000,
@@ -344,7 +451,9 @@ def group_union(group,test_f):
     return initial
 
 
-
+def len_intersect(usr1_ratings,usr2_ratings):
+    res = len(set(usr1_ratings).intersection(usr2_ratings))
+    return res
 
 
 #TODO reimplementar com pandas
@@ -353,7 +462,8 @@ def run(dataset,test_dataset,num_groups,group_size,threshold,groups_file="",
 
     
     initial_dataset = read_ratings_file(dataset)
-    test_dataset = read_ratings_file(test_dataset)
+    '''if test_dataset:
+        test_dataset = read_ratings_file(test_dataset)'''
     #for group_size in [3,4,5]:
     #    for thresh in [0.1,0.3]:
     #print(thresh)
@@ -365,19 +475,21 @@ def run(dataset,test_dataset,num_groups,group_size,threshold,groups_file="",
     else:
        compute_similarity = similarity_groups
 
-    groups = compute_similarity(initial_dataset,'asdf',num_groups=num_groups,
+    groups = compute_similarity(initial_dataset,num_groups=num_groups,
              group_size=group_size,threshold=threshold,
              similarity_function=similarity_function,num_processes=num_processes)
     #ipdb.set_trace()
-    intersect_in_test = [group_intersection(g,test_dataset) for g in groups]
+    '''if test_dataset:
+        intersect_in_test = [group_intersection(g,test_dataset) for g in groups]
+        groups_with_test = sum([1 for x in intersect_in_test if len(x) > 0])
+        log_file.write("Size:{0} Thresh:{1} Num groups with elems in test: {2}\n".format(args.group_size,args.t_value, str(groups_with_test)))'''
+
     intersect_in_base = [group_intersection(g,initial_dataset) for g in groups]
     groups_with_base = sum([1 for x in intersect_in_base if len(x) > 0])
-    groups_with_test = sum([1 for x in intersect_in_test if len(x) > 0])
 
-    log_file.write("Size:{0} Thresh:{1} Num groups with elems in base: {2}\n".format(args.group_size,args.t_value, str(groups_with_base)))
-    log_file.write("Size:{0} Thresh:{1} Num groups with elems in test: {2}\n".format(args.group_size,args.t_value, str(groups_with_test)))
+    #log_file.write("Size:{0} Thresh:{1} Num groups with elems in base: {2}\n".format(args.group_size,args.t_value, str(groups_with_base)))
 
-    avg_corr_total = 0.0
+    '''avg_corr_total = 0.0
     for g in groups:
         avg_corr_g = 0
         i = 0
@@ -393,7 +505,7 @@ def run(dataset,test_dataset,num_groups,group_size,threshold,groups_file="",
         #print(avg_corr_total)
     avg_corr_total /= len(groups)
 
-    log_file.write("Average correlation {0}\n".format(avg_corr_total))
+    log_file.write("Average correlation {0}\n".format(avg_corr_total))'''
             
 
     #print("Min size : " + str(min([len(g) for g in intersect_in_test])))
@@ -408,6 +520,12 @@ def arg_parse():
     
     p.add_argument('--base',type=str,
         help="Folder containing the training instances")
+
+    p.add_argument('--seed',type=int, default=123456,
+        help="Seed used in the experiments")
+
+    p.add_argument('--before',action='store_true',
+        help="If set the groups construction is perfomed using the dataset before the folds partitioning")
     p.add_argument('-o','--out_dir',nargs='?')
     p.add_argument('-p','--part',type=str, default='u1',
         help="Partition to be used")
@@ -435,8 +553,14 @@ if __name__ == "__main__":
     
     args = arg_parse()
 
-    train = os.path.join(args.base,args.part+".base")
-    test = os.path.join(args.base,args.part+".test")
+    random.seed(args.seed)
+
+    if args.before:
+        train = os.path.join(args.base,"u.proc.data")
+        test = train
+    else:
+        train = os.path.join(args.base,args.part+".base")
+        test = os.path.join(args.base,args.part+".test")
 
     if not os.path.isdir(args.out_dir):
         os.mkdir(args.out_dir)
