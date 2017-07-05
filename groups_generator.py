@@ -54,6 +54,68 @@ def random_groups(initial_dataset,out_file,group_size=5):
        
 
 
+
+def make_random_group(users_ids,group_size):
+
+    group = []    
+    for _ in range(group_size):
+        user = users_ids[random.randint(0,len(users_ids)-1)]
+        while user in group:
+            user = users_ids[random.randint(0,len(users_ids)-1)]
+        group.append(user)             
+
+    return group
+    
+'''
+This function construct a random group considering the group size, the minimum number 
+of items in the group intersection and a minimum thresold of similarity.
+One can use this to construct a completely random group by seting the parameters 
+min_intersection and thresh to zero
+
+return one group of users
+'''
+def make_random_groups_with_minimum(dataset,group_size,min_intersection,users_ids,thresh=0, similarity_function=pearsonr):
+    #users_ids = dataset.user_id.unique()
+
+    group = make_random_group(users_ids,group_size)
+    simi = 1
+    if thresh != 0:
+        simi = group_average_similarity(group,dataset)
+
+    while (len(group_intersection(group,dataset)) < min_intersection) or simi < thresh:
+        group = make_random_group(users_ids,group_size)
+        if thresh != 0:
+            simi = group_average_similarity(group,dataset)
+
+
+    return group
+
+
+
+def random_groups_with_minimum(dataset,
+                    min_intersection=5,
+                    threshold  = 0.3,
+                    group_size=5,
+                    num_groups=3000,
+                    similarity_function=pearsonr):
+
+    users_ids = dataset.user_id.unique()  
+
+    groups = []
+    constructed_groups = 0
+    while constructed_groups < num_groups:
+
+        #if constructed_groups%50 == 0:
+        print(constructed_groups)
+        g = make_random_groups_with_minimum(dataset,group_size,min_intersection, users_ids, thresh = threshold, similarity_function = similarity_function)
+        groups.append(g)
+        constructed_groups += 1
+
+        
+
+    return groups
+
+
 def save_groups(groups,out_file):
 
     print("Saving group file")
@@ -64,7 +126,28 @@ def save_groups(groups,out_file):
 
 
 
-def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=10,simi_func=pearsonr):
+
+
+def group_average_similarity(group,dataset,simi_func=pearsonr):
+    avg_corr_g = 0.0
+    i = 0
+    for u1,u2 in combinations(group,2):
+        x = calc_similarity(u1,u2,dataset,simi_func=simi_func)[0]
+        #print(x)
+        #ipdb.set_trace()
+        #print("{0} {1} {2}".format(u1,u2,x))                    
+        avg_corr_g += x
+        i += 1
+            
+    avg_corr_g /= i
+    
+    return avg_corr_g
+    
+
+
+
+
+def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=5,simi_func=pearsonr):
 
     #we can pass the DataFrame for the first user directly
     if user_a_DF.__class__ == pd.DataFrame:
@@ -211,8 +294,6 @@ def construct_group(initial_dataset, users_similarity_matrix,
                     similarity_function=pearsonr, 
                     group_size=4,
                     threshold=0.27):
-
-
 
     users = initial_dataset.user_id.unique()
     num_users = len(users)
@@ -366,8 +447,11 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2):
             items_already_in_test = items_already_in_test.intersection(users_test[user])
         
         num_items_to_choose = size_test - len(items_already_in_test)
-
-        if num_items_to_choose > 1:
+        #it could happen that the couting of groups_with_test was lower than 
+        #the number of groups when for a especific group the pairs (user,items)
+        #in the intersection are already in the test. This happen bacause a user
+        #can belongs to more than one group
+        if num_items_to_choose >= 1:
             groups_with_test += 1
 
         #choose the items to be inserted in test
@@ -382,10 +466,16 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2):
         for item_to_insert in new_items:
             for user in group:
                 users_test[user].add(item_to_insert)
+
+
+
+    return users_test
                     
-    l = len([users_test[x] for x in users_test if len(users_test[x]) > 0])
+    l = len([users_test[x] for x n users_test if len(users_test[x]) > 0])
     print("{0} groups with test {1} groups with item {2} users with test {3} total users".format(groups_with_test,groups_with_items,l,len(users_test)))
     #return users_test
+
+
 
 
 '''
@@ -456,12 +546,11 @@ def len_intersect(usr1_ratings,usr2_ratings):
     return res
 
 
-#TODO reimplementar com pandas
 def run(dataset,test_dataset,num_groups,group_size,threshold,groups_file="",
         num_processes=1,strong=False,similarity_function=pearsonr):
 
     
-    initial_dataset = read_ratings_file(dataset)
+    dataset = read_ratings_file(dataset)
     '''if test_dataset:
         test_dataset = read_ratings_file(test_dataset)'''
     #for group_size in [3,4,5]:
@@ -472,19 +561,23 @@ def run(dataset,test_dataset,num_groups,group_size,threshold,groups_file="",
         
     if strong:
        compute_similarity = similarity_groups_strong
+    elif args.rwm:
+       compute_similarity = random_groups_with_minimum
     else:
        compute_similarity = similarity_groups
 
-    groups = compute_similarity(initial_dataset,num_groups=num_groups,
+
+
+    groups = compute_similarity(dataset,num_groups=num_groups,
              group_size=group_size,threshold=threshold,
-             similarity_function=similarity_function,num_processes=num_processes)
+             similarity_function=similarity_function)
     #ipdb.set_trace()
     '''if test_dataset:
         intersect_in_test = [group_intersection(g,test_dataset) for g in groups]
         groups_with_test = sum([1 for x in intersect_in_test if len(x) > 0])
         log_file.write("Size:{0} Thresh:{1} Num groups with elems in test: {2}\n".format(args.group_size,args.t_value, str(groups_with_test)))'''
 
-    intersect_in_base = [group_intersection(g,initial_dataset) for g in groups]
+    intersect_in_base = [group_intersection(g,dataset) for g in groups]
     groups_with_base = sum([1 for x in intersect_in_base if len(x) > 0])
 
     #log_file.write("Size:{0} Thresh:{1} Num groups with elems in base: {2}\n".format(args.group_size,args.t_value, str(groups_with_base)))
@@ -523,6 +616,9 @@ def arg_parse():
 
     p.add_argument('--seed',type=int, default=123456,
         help="Seed used in the experiments")
+
+    p.add_argument('--rwm',action='store_true',
+        help='If set uses the function random_groups_with_minimum')
 
     p.add_argument('--before',action='store_true',
         help="If set the groups construction is perfomed using the dataset before the folds partitioning")
@@ -566,9 +662,9 @@ if __name__ == "__main__":
         os.mkdir(args.out_dir)
 
     if args.strong:
-        groups_file = os.path.join(args.out_dir,"{0}.groups_ng{1}_sz{2}_tresh{3}_strong".format(args.part,args.num_groups,args.group_size,args.t_value))
+        groups_file = os.path.join(args.out_dir,"{0}.groups_ng{1}_sz{2}_thresh{3}_strong".format(args.part,args.num_groups,args.group_size,args.t_value))
     else:
-        groups_file = os.path.join(args.out_dir,"{0}.groups_ng{1}_sz{2}_tresh{3}".format(args.part,args.num_groups,args.group_size,args.t_value))
+        groups_file = os.path.join(args.out_dir,"{0}.groups_ng{1}_sz{2}_thresh{3}".format(args.part,args.num_groups,args.group_size,args.t_value))
 
 
     groups = run(train,test,args.num_groups,args.group_size,args.t_value,groups_file,args.num_proc,args.strong)
