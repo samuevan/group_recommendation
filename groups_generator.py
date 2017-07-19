@@ -132,7 +132,8 @@ def group_average_similarity(group,dataset,simi_func=pearsonr):
     avg_corr_g = 0.0
     i = 0
     for u1,u2 in combinations(group,2):
-        x = calc_similarity(u1,u2,dataset,simi_func=simi_func)[0]
+        #x = calc_similarity(u1,u2,dataset,simi_func=simi_func)[0]
+        x = calc_similarity(dataset[dataset.user_id == u1],dataset[dataset.user_id == u2])[0]
         #print(x)
         #ipdb.set_trace()
         #print("{0} {1} {2}".format(u1,u2,x))                    
@@ -145,20 +146,49 @@ def group_average_similarity(group,dataset,simi_func=pearsonr):
     
 
 
+'''
+Pearson correlation coeficient for recommender systems
+Only consider the ratings for items in commom between both users.
+However, the average rating of a user is computed over user's complete set 
+of ratings
+'''
+def PCC(user_a_ratings,user_b_ratings,user_a_mean,user_b_mean):
+
+    num = sum([(arat-user_a_mean)*(brat-user_b_mean) for arat,brat in zip(user_a_ratings,user_b_ratings)])
+
+    dena = sum([(arat-user_a_mean)**2 for arat in user_a_ratings])**0.5
+
+    denb = sum([(brat-user_b_mean)**2 for brat in user_b_ratings])**0.5
+
+    similarity = num/(dena * denb)
+
+    return (similarity,1.0)
 
 
+
+
+
+
+'''
+deprecated
+'''
 def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=5,simi_func=pearsonr):
 
     #we can pass the DataFrame for the first user directly
     if user_a_DF.__class__ == pd.DataFrame:
         items_intersec = list(set(user_a_DF['item_id']) & 
                 set(dataset[dataset.user_id == user_b]['item_id']))
+
+        user_a_all_ratings = user_a_DF['rating']
+
     else:    
         items_intersec = list(set(dataset[dataset.user_id == user_a]['item_id']) & 
                 set(dataset[dataset.user_id == user_b]['item_id']))
 
+        user_a_all_ratings = dataset[dataset.user_id==user_a]['rating']
+
     if len(items_intersec) < min_intersec_size:
-        return (-1.0,1.0)
+        return (np.nan,1.0)
     
 
     if user_a_DF.__class__ == pd.DataFrame:
@@ -172,6 +202,7 @@ def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=5,
     user_b_ratings = [dataset[(dataset.user_id == user_b) & 
                     (dataset.item_id==item_id)]['rating'].get_values()[0] for item_id in items_intersec]
 
+    user_b_all_ratings = dataset[dataset.user_id==user_b]['rating']
 
     #trata dos casos onde nao existe variabilidade nos ratings dados por um 
     #usuario e a funcao de similaridade eh pearson. 
@@ -181,8 +212,12 @@ def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=5,
         #print(corr)
         return (corr,1.0)
 
-    #ipdb.set_trace()    
-    if (simi_func == jaccard):
+
+
+    if simi_func == PCC:
+        simi = simi_func(user_a_ratings,user_b_ratings,np.average(user_a_all_ratings),np.average(user_b_all_ratings))
+ 
+    elif (simi_func == jaccard):
         if user_a_DF.__class__ == pd.DataFrame:
             simi = simi_func(user_a_DF['item_id'],dataset[dataset.user_id == user_b]['item_id'])
         else:
@@ -195,6 +230,39 @@ def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=5,
     return simi
 
 
+#def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=5,simi_func=pearsonr):
+def calc_similarity(user_a_DF,user_b_DF,min_intersec_size=5,simi_func=pearsonr):
+    #we can pass the DataFrame for the first user directly
+
+    items_intersec = list(set(user_a_DF['item_id']) & 
+            set(user_b_DF['item_id']))
+
+    if len(items_intersec) < min_intersec_size:
+        return (np.nan,1.0)
+    
+    user_a_ratings = [user_a_DF[user_a_DF.item_id==item_id]['rating'].get_values()[0] for item_id in items_intersec]
+    user_b_ratings = [user_b_DF[user_b_DF.item_id==item_id]['rating'].get_values()[0] for item_id in items_intersec]
+
+    user_a_all_ratings = user_a_DF['rating']
+    user_b_all_ratings = user_b_DF['rating']
+
+
+    #trata dos casos onde nao existe variabilidade nos ratings dados por um 
+    #usuario e a funcao de similaridade eh pearson. 
+    #Nao sei se eh a melhor forma de fazer isso
+    if (np.var(user_a_ratings) < 0.0001) or (np.var(user_b_ratings) < 0.0001) and (simi_func == pearsonr):
+        corr = 1 - ((np.mean(user_a_ratings) - np.mean(user_b_ratings))**2) / (np.mean(user_a_ratings)*np.mean(user_b_ratings))
+        #print(corr)
+        return (corr,1.0)
+
+    if simi_func == PCC:
+        simi = simi_func(user_a_ratings,user_b_ratings,np.average(user_a_all_ratings),np.average(user_b_all_ratings)) 
+    elif (simi_func == jaccard):
+        simi = simi_func(user_a_DF['item_id'],user_b_DF['item_id'])
+    else:
+        simi = simi_func(user_a_ratings,user_b_ratings)
+
+    return simi
 
 def jaccard(user_a_ratings,user_b_ratings):
 
@@ -244,7 +312,6 @@ def construct_group(initial_dataset, users_similarity_matrix,
     #while not Q.empty():
     group_users = []
 
-
     first_user = users[random.randint(0,num_users-1)]
     #extract the dataframe that represents the first user, so we do not need
     #to make this extrction in every interation of the next loop
@@ -254,11 +321,8 @@ def construct_group(initial_dataset, users_similarity_matrix,
     for _ in range(group_size-1):           
         usr2 = users[random.randint(0,num_users-1)]
             
-        #every time we draw a new pair of users which similarity/correlation 
-        #was not yet computed we do it
-        #if users_similarity_matrix[first_user][usr2] == -999:
-        simi,p_value = calc_similarity(first_user,usr2,initial_dataset,
-                                user_a_DF=first_user_DF, 
+        usr2_DF = initial_dataset[initial_dataset.user_id == usr2]
+        simi,p_value = calc_similarity(first_user_DF,usr2_DF,
                                 simi_func=similarity_function)
 
         #    users_similarity_matrix[first_user][usr2] = simi
@@ -286,9 +350,8 @@ def construct_group(initial_dataset, users_similarity_matrix,
             #every time we draw a new pair of users which similarity/correlation 
             #was not yet computed we do it
             #if users_similarity_matrix[first_user][usr2] == -999:
-                
-            simi,p_value = calc_similarity(first_user,usr2,
-                                initial_dataset, user_a_DF=first_user_DF, 
+            usr2_DF = initial_dataset[initial_dataset.user_id == usr2]    
+            simi,p_value = calc_similarity(first_user_DF,usr2_DF,
                                 simi_func=similarity_function)
             #    users_similarity_matrix[first_user][usr2] = simi
 
@@ -314,7 +377,8 @@ The average groups correlation
  
 
 '''
-def compute_group_statistics(groups,dataset):
+def compute_group_statistics(groups,dataset,compute_corr = False):
+
 
     intersection = [group_intersection(g,dataset) for g in groups]
 
@@ -334,25 +398,27 @@ def compute_group_statistics(groups,dataset):
             unique_users.add(u)
    
     avg_corr_total = 0.0
-    for g in groups:
-        avg_corr_g = 0
-        i = 0
-        for u1,u2 in combinations(g,2):
-            x = calc_similarity(u1,u2,dataset)[0]
-            #print(x)
-            #ipdb.set_trace()
-            #print("{0} {1} {2}".format(u1,u2,x))                    
-            avg_corr_g += x
-            i += 1
-                
-        avg_corr_total += avg_corr_g/i
-        #print(avg_corr_total)
-    avg_corr_total /= len(groups)
+
+    if compute_corr:
+        for g in groups:
+            avg_corr_g = 0
+            i = 0
+
+            for u1,u2 in combinations(g,2):
+                #x = calc_similarity(u1,u2,dataset)[0]
+                x = calc_similarity(dataset[dataset.user_id == u1],dataset[dataset.user_id == u2])[0]
+                avg_corr_g += x
+                i += 1
+                    
+            avg_corr_total += avg_corr_g/i
+            #print(avg_corr_total)
+        avg_corr_total /= len(groups)
 
     out = 'Unique users: {0}\nUnique items: {1}\nGroups with items: {2}\n'
-    out +='Medium number of group items: {3}\nAvg. Group Correlation: {4}'
+    out +='Avg number of group items (total): {3}\n'
+    out+='Avg number of group items (valid groups): {4}\nAvg. Group Correlation: {5}'
 
-    print(out.format(len(unique_users),len(unique_items),groups_with_items,sum(items_per_group)/len(groups),avg_corr_total))
+    print(out.format(len(unique_users),len(unique_items),groups_with_items,sum(items_per_group)/len(groups),sum(items_per_group)/groups_with_items,avg_corr_total))
 
 
 
@@ -612,19 +678,18 @@ def similarity_groups_strong(initial_dataset,
     print("init")    
     while constructed_groups < num_groups:
 
-        if (constructed_groups % 50) == 0:
-            print(constructed_groups)
+        #if (constructed_groups % 50) == 0:
+        print(constructed_groups)
 
         first_user = users[random.randint(0,num_users-1)]
         first_user_DF = initial_dataset[initial_dataset.user_id == first_user]
         group_users = [first_user]
         while len(group_users) < group_size:
             
-            usr2 = users[random.randint(0,num_users-1)]
-            
-            
-            num_users_respect_thresh = sum([1 for usr in group_users if calc_similarity(usr,usr2,initial_dataset,first_user_DF,simi_func=similarity_function)[0] >= threshold])
-            
+            usr2 = users[random.randint(0,num_users-1)]                       
+            usr2_DF = initial_dataset[initial_dataset.user_id == usr2]
+
+            num_users_respect_thresh = sum([1 for usr in group_users if calc_similarity(first_user_DF,usr2_DF,simi_func=similarity_function)[0] >= threshold])
             
             attempts = 1
             while num_users_respect_thresh < len(group_users) or usr2 in group_users:
@@ -637,7 +702,9 @@ def similarity_groups_strong(initial_dataset,
                     attempts = 0
 
                 usr2 = users[random.randint(0,num_users-1)]
-                num_users_respect_thresh = sum([1 for usr in group_users if calc_similarity(usr,usr2,initial_dataset,first_user_DF,simi_func=similarity_function)[0] >= threshold])
+                usr2_DF = initial_dataset[initial_dataset.user_id == usr2]
+                num_users_respect_thresh = sum([1 for usr in group_users if calc_similarity(first_user_DF,usr2_DF,simi_func=similarity_function)[0] >= threshold])
+
                 attempts += 1
            
             #print("Yes")
@@ -762,6 +829,9 @@ def arg_parse():
     p.add_argument('--dist_file',type=str,default='',
         help='Numpy dataset contaning the distances previously computed')
 
+    p.add_argument('--simi_func',default=PCC,
+        help='Similarity function')
+
     p.add_argument('--before',action='store_true',
         help="If set the groups construction is perfomed using the dataset before the folds partitioning")
     p.add_argument('-o','--out_dir',nargs='?')
@@ -810,7 +880,7 @@ if __name__ == "__main__":
         groups_file = os.path.join(args.out_dir,"{0}.groups_ng{1}_sz{2}_thresh{3}".format(args.part,args.num_groups,args.group_size,args.t_value))
 
 
-    groups = run(train,test,args.num_groups,args.group_size,args.t_value,groups_file,args.num_proc,args.strong)
+    groups = run(train,test,args.num_groups,args.group_size,args.t_value,groups_file,args.num_proc,args.strong,similarity_function=args.simi_func)
     save_groups(groups,groups_file)
 
 
