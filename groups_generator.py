@@ -173,7 +173,7 @@ def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=5,
                     (dataset.item_id==item_id)]['rating'].get_values()[0] for item_id in items_intersec]
 
 
-    #trata dos casos onde não existe variabilidade nos ratings dados por um 
+    #trata dos casos onde nao existe variabilidade nos ratings dados por um 
     #usuario e a funcao de similaridade eh pearson. 
     #Nao sei se eh a melhor forma de fazer isso
     if (np.var(user_a_ratings) < 0.0001) or (np.var(user_b_ratings) < 0.0001) and (simi_func == pearsonr):
@@ -182,7 +182,14 @@ def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=5,
         return (corr,1.0)
 
     #ipdb.set_trace()    
-    simi = simi_func(user_a_ratings,user_b_ratings)
+    if (simi_func == jaccard):
+        if user_a_DF.__class__ == pd.DataFrame:
+            simi = simi_func(user_a_DF['item_id'],dataset[dataset.user_id == user_b]['item_id'])
+        else:
+            simi = simi_func(dataset[dataset.user_id == user_a]['item_id'],dataset[dataset.user_id == user_b]['item_id'])
+
+    else:
+        simi = simi_func(user_a_ratings,user_b_ratings)
     #print(simi)
 
     return simi
@@ -197,70 +204,6 @@ def jaccard(user_a_ratings,user_b_ratings):
     jacc = float(num)/float(den)
 
     return (jacc,1.0)    
-
-
-'''
-Return groups of similar users
-'''
-def similarity_groups_strong(initial_dataset, out_file, 
-        similarity_function=pearsonr,group_size=4, num_groups=300,threshold=0.27):
-
-    users = initial_dataset.user_id.unique()
-    num_users = len(users)
-    users_similarity_matrix = np.zeros((num_users,num_users))
-    #users_similarity_matrix.fill(-1.0)
-    #print("Starting computing distances")
-    #for usr1,usr2 in combinations(initial_dataset.user_id.unique(),2):
-    #    users_similarity_matrix[usr1-1][usr2-1] = similarity_function(usr1,usr2,initial_dataset)
-    #print("Finish computing distances")
-
-    groups = []
-    groups_similarity = []
-    constructed_groups = 0
-    #Constructing groups with high innner similarity
-    #only considers the similarity with 
-    print("init")    
-    while constructed_groups < num_groups:
-
-        if (constructed_groups % 50) == 0:
-            print(constructed_groups)
-
-        first_user = users[random.randint(0,num_users-1)]
-        group_users = [first_user]
-        while len(group_users) < group_size:
-            usr2 = users[random.randint(0,num_users-1)]
-
-            num_users_respect_thresh = sum([1 for usr in group_users if calc_similarity(usr,usr2,initial_dataset,simi_func=similarity_function)[0] > threshold])
-
-            #simi,p_value = calc_similarity(first_user,usr2,initial_dataset,simi_func=similarity_function)
-            attempts = 1
-            while num_users_respect_thresh < len(group_users) or usr2 in group_users:
-                #no caso de rodar muitas vezes e nao encontrar outro user similar ao primeiro
-                #escolho outro usuario como semente
-                if attempts > 200:
-                    first_user = users[random.randint(0,num_users-1)]
-                    group_users = [first_user]
-                    attempts = 0
-
-                usr2 = users[random.randint(0,num_users-1)]
-                num_users_respect_thresh = sum([1 for usr in group_users if calc_similarity(usr,usr2,initial_dataset,simi_func=similarity_function)[0] > threshold])
-                attempts += 1
-           
-            #print("Yes")
-            group_users.append(usr2)
-            
-
-
-        groups.append(group_users)
-        
-        constructed_groups += 1
-
-    return groups
-
-
-
-
-
 
 def store_intersections(base,min_num_intersect = 5):
     '''Computes the size of the intersection between two users and returns
@@ -377,10 +320,13 @@ def compute_group_statistics(groups,dataset):
 
     items_per_group = []
     groups_with_items = 0
+    unique_items = set()
     for group in intersection:
         items_per_group.append(len(group))
         if items_per_group[-1] > 0:
             groups_with_items += 1
+        for item in group:
+            unique_items.add(item)
 
     unique_users = set()    
     for g in groups:
@@ -388,7 +334,7 @@ def compute_group_statistics(groups,dataset):
             unique_users.add(u)
    
     avg_corr_total = 0.0
-    '''for g in groups:
+    for g in groups:
         avg_corr_g = 0
         i = 0
         for u1,u2 in combinations(g,2):
@@ -401,12 +347,12 @@ def compute_group_statistics(groups,dataset):
                 
         avg_corr_total += avg_corr_g/i
         #print(avg_corr_total)
-    avg_corr_total /= len(groups)'''
+    avg_corr_total /= len(groups)
 
-    out = 'Unique users {0}\nGroups with items {1}\n'
-    out +='Medium number of group items{2}\nAvg. Group Correlation{3}'
+    out = 'Unique users: {0}\nUnique items: {1}\nGroups with items: {2}\n'
+    out +='Medium number of group items: {3}\nAvg. Group Correlation: {4}'
 
-    print(out.format(len(unique_users),groups_with_items,sum(items_per_group)/len(groups),avg_corr_total))
+    print(out.format(len(unique_users),len(unique_items),groups_with_items,sum(items_per_group)/len(groups),avg_corr_total))
 
 
 
@@ -423,20 +369,21 @@ Output: The set of items that should be put in the test set for each user
          according to the groups 
 '''
 def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2):
-    ipdb.set_trace()
+
     users_test = {}
     groups_with_test = 0
     groups_with_items = 0
+
+    test_indexes = np.zeros(len(initial_dataframe),dtype=int)
+
     for group_id, group in enumerate(groups):
         #ipdb.set_trace()
         items_intersec = list(group_intersection(group,initial_dataframe))
         size_test = int(0.2 * len(items_intersec))
         if len(items_intersec) > 0:
             groups_with_items += 1
-        #size_test >= 1:
-        #    ipdb.set_trace()
-        #add the user in the final users_test dictionary
-        for user in group:
+
+        '''for user in group:
            if not user in users_test:
                users_test.update([(user,set())])
 
@@ -444,9 +391,9 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2):
         #in the test partition for the group users        
         items_already_in_test = users_test[group[0]]
         for user in group[1:]:
-            items_already_in_test = items_already_in_test.intersection(users_test[user])
+            items_already_in_test = items_already_in_test.intersection(users_test[user])'''
         
-        num_items_to_choose = size_test - len(items_already_in_test)
+        num_items_to_choose = size_test #- len(items_already_in_test)
         #it could happen that the couting of groups_with_test was lower than 
         #the number of groups when for a especific group the pairs (user,items)
         #in the intersection are already in the test. This happen bacause a user
@@ -458,25 +405,71 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2):
         new_items = []
         while num_items_to_choose > 0:
             new_item = items_intersec[random.randint(0,len(items_intersec)-1)]
-            if not new_item in items_already_in_test:
+            if not new_item in new_items:
                 new_items.append(new_item)
                 num_items_to_choose -= 1
+
 
         #insert the items in the final structure
         for item_to_insert in new_items:
             for user in group:
-                users_test[user].add(item_to_insert)
+                user_item_index = initial_dataframe[(initial_dataframe.user_id == user) & (initial_dataframe.item_id == item_to_insert)].index
+                test_indexes[user_item_index] = 1
 
 
 
-    return users_test
+    return initial_dataframe.assign(test=pd.Series(test_indexes).values)
+
+    #return users_test
                     
-    l = len([users_test[x] for x n users_test if len(users_test[x]) > 0])
-    print("{0} groups with test {1} groups with item {2} users with test {3} total users".format(groups_with_test,groups_with_items,l,len(users_test)))
+    #l = len([users_test[x] for x n users_test if len(users_test[x]) > 0])
+    #print("{0} groups with test {1} groups with item {2} users with test {3} total users".format(groups_with_test,groups_with_items,l,len(users_test)))
     #return users_test
 
 
 
+'''
+Imput:
+groups:dictionary containing the groups
+dataset: pandas Dataframe containg all the data used to construc the groups
+perc_test: percentage of group items (or user items case by_group = False) 
+to be used as test
+by_group: defines if the partitioning will be performed considering the groups 
+or the users
+use_valid : defines if the partitioning will consider a 
+'''
+def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,by_group=True, use_valid=False):
+
+    out_cols = ("user_id", "item_id", "rating")
+
+    if not os.path.isdir(out_dir):
+        os.mkdir(out_dir)
+
+        
+    dataset = make_test_fold_from_groups(groups,dataset)
+    test_dataset = dataset[dataset.test == 1]
+
+    test_file = os.path.join(out_dir,'u.test')
+    test_dataset.to_csv(test_file, header=False, index=False, sep="\t", columns=out_cols)
+
+    base_and_val = dataset[dataset.test == 0]
+    
+    if use_valid:
+        del(base_and_val['test'])
+        perc_vali = perc_test / (1-perc_test)
+        base_and_val = make_test_fold_from_groups(groups,dataset, perc_test = perc_vali)
+
+        base_file = os.path.join(out_dir,'u.base')
+        val_file = os.path.join(out_dir,'u.validation')     
+
+        base_and_val[base_and_val.test == 1].to_csv(val_file, header=False, index=False, sep="\t", columns=out_cols)
+        base_and_val[base_and_val.test == 0].to_csv(base_file, header=False, index=False, sep="\t", columns=out_cols)
+
+    else:
+        baseval_file = os.path.join(out_dir,'u.base')
+        base_and_val.to_csv(baseval_file, header=False, index=False, sep="\t", columns=out_cols)
+
+    
 
 '''
 Return groups of similar users
@@ -526,11 +519,157 @@ def similarity_groups(initial_dataset,
     return final_groups
 
 
-def group_intersection(group,test_f):                                                         
-    initial = set(list((test_f[test_f.user_id == group[0]]['item_id'])))
-    for user in group[1:]:
-        initial = initial.intersection(list((test_f[test_f.user_id == user]['item_id'])))
-    return initial
+
+def contruct_group_recursive(g,users,intersec,group_size,all_intersections,attempts=0):
+
+    
+    if len(g) == 0:
+        g = [users[random.randint(0,len(users)-1)]]
+        intersec = all_intersections[g[0]]
+        return contruct_group_recursive(g,users,intersec,group_size,all_intersections,attempts)
+    elif len(g) == group_size:
+        return g
+    elif attempts == 10:
+        g = []
+        return [] #contruct_group_recursive(g,users,intersec,group_size,all_intersections,0) 
+    elif len(intersec) < (group_size-len(g)):
+        attempts += 1
+        g = g[:-1]        
+        intersec = list(group_intersection(g,all_intersections))
+        return contruct_group_recursive(g,users,intersec,group_size,all_intersections,attempts)
+    else:        
+        g.append(intersec[random.randint(0,len(intersec)-1)])
+        intersec = list(group_intersection(g,all_intersections))
+        return contruct_group_recursive(g,users,intersec,group_size,all_intersections,attempts)
+        
+
+
+'''
+Return groups of similar users
+'''
+def similarity_groups_strong_fast(initial_dataset, 
+        similarity_function=pearsonr,
+        group_size=4, 
+        num_groups=300,
+        threshold=0.27):
+
+    global args
+
+    users = initial_dataset.user_id.unique()
+    num_users = len(users)
+    users_similarity_matrix = None
+    if args.dist_file:
+        users_similarity_matrix = np.load(args.dist_file)
+        #TODO adicionar calculo de lista de adjacencia
+
+    positions_bigger_than_t = []
+    for i in range(len(users_similarity_matrix)):
+        positions_bigger_than_t.append([])
+        for j in range(len(users_similarity_matrix)):
+            if users_similarity_matrix[i][j] >= threshold or users_similarity_matrix[j][i] >= threshold:
+                positions_bigger_than_t[-1].append(j)
+
+    
+    
+    groups = []
+    groups_similarity = []
+    constructed_groups = 0
+    #Constructing groups with high innner similarity
+    #only considers the similarity with 
+    group_users = []
+    while constructed_groups < num_groups:
+        #ipdb.set_trace()
+        if constructed_groups%50 == 0:
+            print(constructed_groups)
+
+        group_users = contruct_group_recursive([],users,[],group_size,positions_bigger_than_t) 
+        if len(group_users) > 0:
+            groups.append(group_users)
+            constructed_groups += 1
+
+    return groups
+
+'''
+Return groups of similar users
+'''
+def similarity_groups_strong(initial_dataset, 
+        similarity_function=pearsonr,
+        group_size=4, 
+        num_groups=300,
+        threshold=0.27):
+
+    global args
+
+    users = initial_dataset.user_id.unique()
+    num_users = len(users)
+    
+
+    groups = []
+    groups_similarity = []
+    constructed_groups = 0
+    #Constructing groups with high innner similarity
+    #only considers the similarity with 
+    print("init")    
+    while constructed_groups < num_groups:
+
+        if (constructed_groups % 50) == 0:
+            print(constructed_groups)
+
+        first_user = users[random.randint(0,num_users-1)]
+        first_user_DF = initial_dataset[initial_dataset.user_id == first_user]
+        group_users = [first_user]
+        while len(group_users) < group_size:
+            
+            usr2 = users[random.randint(0,num_users-1)]
+            
+            
+            num_users_respect_thresh = sum([1 for usr in group_users if calc_similarity(usr,usr2,initial_dataset,first_user_DF,simi_func=similarity_function)[0] >= threshold])
+            
+            
+            attempts = 1
+            while num_users_respect_thresh < len(group_users) or usr2 in group_users:
+                #no caso de rodar muitas vezes e nao encontrar outro user similar ao primeiro
+                #escolho outro usuario como semente
+                if attempts > 20:
+                    first_user = users[random.randint(0,num_users-1)]
+                    first_user_DF = initial_dataset[initial_dataset.user_id == first_user]
+                    group_users = [first_user]
+                    attempts = 0
+
+                usr2 = users[random.randint(0,num_users-1)]
+                num_users_respect_thresh = sum([1 for usr in group_users if calc_similarity(usr,usr2,initial_dataset,first_user_DF,simi_func=similarity_function)[0] >= threshold])
+                attempts += 1
+           
+            #print("Yes")
+            group_users.append(usr2)
+            
+
+
+        groups.append(group_users)
+        
+        constructed_groups += 1
+
+    return groups
+
+
+
+
+def group_intersection(group,test_f):
+
+    if len(group) == 0:
+        return set()
+
+    if test_f.__class__ == pd.DataFrame:                                                         
+        initial = set(list((test_f[test_f.user_id == group[0]]['item_id'])))
+        for user in group[1:]:
+            initial = initial.intersection(list((test_f[test_f.user_id == user]['item_id'])))
+        return initial
+    else:
+        initial = set(test_f[group[0]])
+        for user in group[1:]:
+            initial = initial.intersection(test_f[user])
+        return initial
+        
 
 
 
@@ -620,6 +759,9 @@ def arg_parse():
     p.add_argument('--rwm',action='store_true',
         help='If set uses the function random_groups_with_minimum')
 
+    p.add_argument('--dist_file',type=str,default='',
+        help='Numpy dataset contaning the distances previously computed')
+
     p.add_argument('--before',action='store_true',
         help="If set the groups construction is perfomed using the dataset before the folds partitioning")
     p.add_argument('-o','--out_dir',nargs='?')
@@ -647,6 +789,7 @@ def arg_parse():
 
 if __name__ == "__main__":
     
+    global args
     args = arg_parse()
 
     random.seed(args.seed)
