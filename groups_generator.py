@@ -15,7 +15,7 @@ import ipdb
 import os
 import random
 import time
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import argparse
 from scipy.stats import pearsonr
 from scipy.spatial.distance import cosine
