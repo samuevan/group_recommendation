@@ -3,6 +3,7 @@ import grs_recommendation_agg as grs
 import numpy as np
 import os
 import sys
+import glob
 import pandas as pd
 
 def compute_distances(dataset_path, first_user, last_user,out_dir, simi_func=gg.PCC):
@@ -25,6 +26,21 @@ def compute_distances(dataset_path, first_user, last_user,out_dir, simi_func=gg.
             distances[u1_pos+1][u2] = dist
 
     np.save(out_path,distances,allow_pickle=False)
+
+
+
+def concatenate_matrices(distances_path,to_save=False):
+    matrices_paths =sorted(glob.glob(os.path.join(distances_path,'*.npy')))
+
+    matrices = []
+    matrices.append(np.load(matrices_paths[0]))
+
+    for matrix_path in matrices_paths[1:]:
+        matrices.append(np.load(matrix_path)[1:])
+
+    return np.concatenate(matrices)
+
+
 
 if __name__ == '__main__':
     dataset_path = sys.argv[1]

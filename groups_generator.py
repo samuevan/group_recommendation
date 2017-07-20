@@ -385,7 +385,11 @@ def compute_group_statistics(groups,dataset,compute_corr = False):
     items_per_group = []
     groups_with_items = 0
     unique_items = set()
+    unique_groups = set()
     for group in intersection:
+        str_group = str(sorted(group))
+        unique_groups.add(str_group)
+
         items_per_group.append(len(group))
         if items_per_group[-1] > 0:
             groups_with_items += 1
@@ -414,11 +418,13 @@ def compute_group_statistics(groups,dataset,compute_corr = False):
             #print(avg_corr_total)
         avg_corr_total /= len(groups)
 
-    out = 'Unique users: {0}\nUnique items: {1}\nGroups with items: {2}\n'
-    out +='Avg number of group items (total): {3}\n'
-    out+='Avg number of group items (valid groups): {4}\nAvg. Group Correlation: {5}'
+    out = 'Unique users: {0}\nUnique items: {1}\n'
+    out += 'Unique groups {2}\nGroups with items: {3}\n'
+    out +='Avg number of group items (total): {4}\n'
+    out+='Avg number of group items (valid groups): {5}\nAvg. Group Correlation: {6}'
 
-    print(out.format(len(unique_users),len(unique_items),groups_with_items,sum(items_per_group)/len(groups),sum(items_per_group)/groups_with_items,avg_corr_total))
+    #print(out.format(len(unique_users),len(unique_items),len(unique_groups),groups_with_items,sum(items_per_group)/len(groups),sum(items_per_group)/groups_with_items,avg_corr_total))
+    return(out.format(len(unique_users),len(unique_items),len(unique_groups),groups_with_items,sum(items_per_group)/len(groups),sum(items_per_group)/groups_with_items,avg_corr_total))
 
 
 
@@ -766,7 +772,7 @@ def run(dataset,test_dataset,num_groups,group_size,threshold,groups_file="",
     log_file = open(groups_file+".log",'w')
         
     if strong:
-       compute_similarity = similarity_groups_strong
+       compute_similarity = similarity_groups_strong_fast
     elif args.rwm:
        compute_similarity = random_groups_with_minimum
     else:
@@ -786,32 +792,13 @@ def run(dataset,test_dataset,num_groups,group_size,threshold,groups_file="",
     intersect_in_base = [group_intersection(g,dataset) for g in groups]
     groups_with_base = sum([1 for x in intersect_in_base if len(x) > 0])
 
-    #log_file.write("Size:{0} Thresh:{1} Num groups with elems in base: {2}\n".format(args.group_size,args.t_value, str(groups_with_base)))
+    log_file.write(compute_group_statistics(groups,dataset))
 
-    '''avg_corr_total = 0.0
-    for g in groups:
-        avg_corr_g = 0
-        i = 0
-        for u1,u2 in combinations(g,2):
-            x = calc_similarity(u1,u2,initial_dataset)[0]
-            #print(x)
-            #ipdb.set_trace()
-            #print("{0} {1} {2}".format(u1,u2,x))                    
-            avg_corr_g += x
-            i += 1
-                
-        avg_corr_total += avg_corr_g/i
-        #print(avg_corr_total)
-    avg_corr_total /= len(groups)
-
-    log_file.write("Average correlation {0}\n".format(avg_corr_total))'''
             
 
-    #print("Min size : " + str(min([len(g) for g in intersect_in_test])))
     log_file.close()
     return groups
 
-    #random_groups(initial_dataset,out_file)        
 
 
 def arg_parse():
