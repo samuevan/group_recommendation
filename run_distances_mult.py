@@ -14,5 +14,5 @@ if __name__ == '__main__':
     
     for fu in range(0,len(users)+1,step):
         lu = min(fu + step,users[-1])
-        os.system('echo {0} {1}'.format(fu+1,lu))
-        os.system('python save_distances.py {0} {1} {2} {3} &'.fomart(dataset_f,fu+!1,lu,out_dir))
+        #os.system('echo {0} {1}'.format(fu+1,lu))
+        os.system('python save_distances.py {0} {1} {2} {3} &'.format(dataset_f,fu+1,lu,out_dir))
