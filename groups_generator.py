@@ -207,12 +207,10 @@ def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=5,
     #trata dos casos onde nao existe variabilidade nos ratings dados por um 
     #usuario e a funcao de similaridade eh pearson. 
     #Nao sei se eh a melhor forma de fazer isso
-    if (np.var(user_a_ratings) < 0.0001) or (np.var(user_b_ratings) < 0.0001) and (simi_func == pearsonr):
+    '''if ((np.var(user_a_ratings) < 0.0001) or (np.var(user_b_ratings) < 0.0001)) and (simi_func == pearsonr):
         corr = 1 - ((np.mean(user_a_ratings) - np.mean(user_b_ratings))**2) / (np.mean(user_a_ratings)*np.mean(user_b_ratings))
         #print(corr)
-        return (corr,1.0)
-
-
+        return (corr,1.0)'''
 
     if simi_func == PCC:
         simi = simi_func(user_a_ratings,user_b_ratings,np.average(user_a_all_ratings),np.average(user_b_all_ratings))
