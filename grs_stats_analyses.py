@@ -12,7 +12,7 @@ The number of groups with items in the dataset
 The number medium number of items for each group (for all groups and for the groups with items)
 The average groups correlation
  
-
+TODO add distance matrix as aditional parameter
 '''
 def compute_group_statistics(groups,dataset,compute_corr = False):
 
@@ -74,12 +74,12 @@ def plot_distances_hist(distances,out_dir,out_file,threshold=0.27):
     for i in range(lines):
         for j in range(rows):
             if not np.isnan(distances[i][j]):
-                '''if distances[i][j] < -1.0:
+                if distances[i][j] < -1.0:
                     print('({},{}) : {}'.format(i,j,distances[i][j]))
-                else:'''
-                distances_plain.append(distances[i][j])
-                if distances[i][j] >= threshold:
-                    distance_bigger_thresh.append(distances[i][j]) 
+                else:
+                    distances_plain.append(distances[i][j])
+                    if distances[i][j] >= threshold:
+                        distance_bigger_thresh.append(distances[i][j]) 
 
     print(len(distance_bigger_thresh)/len(distances_plain))
     mean_distance = np.average(distances_plain)
