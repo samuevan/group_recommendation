@@ -2,6 +2,7 @@ import groups_generator as gg
 import grs_recommendation_agg as grs
 import numpy as np
 import os
+import re
 import sys
 import glob
 import pandas as pd
@@ -32,7 +33,7 @@ def compute_distances(dataset_path, first_user, last_user,out_dir, simi_func=gg.
 
 
 
-def concatenate_matrices(distances_path,to_save=False):
+'''def concatenate_matrices(distances_path,to_save=False):
     matrices_paths =sorted(glob.glob(os.path.join(distances_path,'*.npy')))
 
     matrices = []
@@ -41,8 +42,29 @@ def concatenate_matrices(distances_path,to_save=False):
     for matrix_path in matrices_paths[1:]:
         matrices.append(np.load(matrix_path)[1:])
 
-    return np.concatenate(matrices)
+    return np.concatenate(matrices)'''
 
+
+
+def concatenate_matrices(matrices_folder,to_save=False,out_file=''):
+    matrices = glob.glob(os.path.join(matrices_folder,'*.npy'))
+    splits = [re.findall('[0-9]*-[0-9]*',matrix)[0] for matrix in matrices] 
+
+    pre = os.path.dirname(matrices[0])+'/distances_'
+    
+    sorted_splits = sorted(splits,key = lambda x : int(x.split('-')[0]))
+    d = [np.load(pre+splits[0]+'.npy')] 
+
+    for part in sorted_splits[1:]:                                                                          
+        f = pre+part+'.npy'                                                                                                 
+        d.append(np.load(f)[1:])
+
+
+    if to_save:
+        final_matrix = np.concatenate(d)
+        np.save(os.path.join(matrices_folder,'distances_complete'),final_matrix,allow_pickle=False)
+    else:
+        return np.concatenate(d)
 
 
 if __name__ == '__main__':
