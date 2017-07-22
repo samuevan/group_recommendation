@@ -19,9 +19,12 @@ def compute_distances(dataset_path, first_user, last_user,out_dir, simi_func=gg.
     distances.fill(np.nan)
     for u1_pos,u1 in enumerate(range(first_user,last_user+1)):
         u1_DF = dataset[dataset.user_id == u1]
+        print('{}'.format(u1))
+
         for u2 in users[u1:]:
-            u2_DF = dataset[dataset.user_id == u2]
-            print('{}->{}'.format(u1,u2))
+            if u2%100 == 0:
+                print('{}->{}'.format(u1,u2))
+            u2_DF = dataset[dataset.user_id == u2]            
             dist,_ = gg.calc_similarity(u1_DF,u2_DF,simi_func=simi_func)
             distances[u1_pos+1][u2] = dist
 
