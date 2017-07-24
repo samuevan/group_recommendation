@@ -449,7 +449,7 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2):
     for group_id, group in enumerate(groups):
         #ipdb.set_trace()
         items_intersec = list(group_intersection(group,initial_dataframe))
-        size_test = int(0.2 * len(items_intersec))
+        size_test = int(perc_test * len(items_intersec))
         if len(items_intersec) > 0:
             groups_with_items += 1
 
@@ -487,7 +487,7 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2):
                 test_indexes[user_item_index] = 1
 
 
-
+    ipdb.set_trace()
     return initial_dataframe.assign(test=pd.Series(test_indexes).values)
 
     #return users_test
@@ -514,20 +514,23 @@ def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,by_gro
 
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)
-
-        
-    dataset = make_test_fold_from_groups(groups,dataset)
+    
+    #ipdb.set_trace()   
+    dataset = make_test_fold_from_groups(groups,dataset,perc_test)
     test_dataset = dataset[dataset.test == 1]
 
     test_file = os.path.join(out_dir,'u.test')
     test_dataset.to_csv(test_file, header=False, index=False, sep="\t", columns=out_cols)
 
+    ipdb.set_trace()
     base_and_val = dataset[dataset.test == 0]
+
     
     if use_valid:
         del(base_and_val['test'])
+        base_and_val.reset_index(drop=True,inplace=True)
         perc_vali = perc_test / (1-perc_test)
-        base_and_val = make_test_fold_from_groups(groups,dataset, perc_test = perc_vali)
+        base_and_val = make_test_fold_from_groups(groups,base_and_val, perc_test = perc_vali)
 
         base_file = os.path.join(out_dir,'u.base')
         val_file = os.path.join(out_dir,'u.validation')     
