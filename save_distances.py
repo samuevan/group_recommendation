@@ -3,6 +3,7 @@ import grs_recommendation_agg as grs
 import numpy as np
 import os
 import re
+import ipdb
 import sys
 import glob
 import pandas as pd
@@ -53,10 +54,11 @@ def concatenate_matrices(matrices_folder,to_save=False,out_file=''):
     pre = os.path.dirname(matrices[0])+'/distances_'
     
     sorted_splits = sorted(splits,key = lambda x : int(x.split('-')[0]))
-    d = [np.load(pre+splits[0]+'.npy')] 
+    d = [np.load(pre+sorted_splits[0]+'.npy')] 
 
     for part in sorted_splits[1:]:                                                                          
         f = pre+part+'.npy'                                                                                                 
+        #ipdb.set_trace()
         d.append(np.load(f)[1:])
 
 

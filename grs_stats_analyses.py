@@ -1,7 +1,8 @@
+import os
 import pandas as pd
 import numpy as np
 import matplotlib 
-#matplotlib.use('Agg')
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
@@ -98,7 +99,7 @@ def plot_distances_hist(distances,out_dir,out_file,threshold=0.27):
     ax.vlines(threshold,ymin=min(n),ymax=max(n)+0.1*ymax,colors='r',linestyles=':')
 
     plt.ylim((min(n),max(n)+0.1*ymax))
-
+    plt.xlim((-1.0,1.0))
     my_ticks = sorted([-1.0,0.03,mean_distance,threshold,1.0])
     
 
@@ -106,4 +107,6 @@ def plot_distances_hist(distances,out_dir,out_file,threshold=0.27):
     ax.set_ylabel("# users pairs")
     plt.xticks(my_ticks,rotation='vertical')
     #plt.legend()
-    plt.show()
+    #plt.show()
+    plt.savefig(os.path.join(out_dir,out_file+'.pdf'))
+    plt.close()
