@@ -229,6 +229,7 @@ deprecated
 """
 
 #def calc_similarity(user_a,user_b,dataset,user_a_DF = None, min_intersec_size=5,simi_func=pearsonr):
+#TODO remove the second value of the return
 def calc_similarity(user_a_DF,user_b_DF,min_intersec_size=5,simi_func=pearsonr):
     #we can pass the DataFrame for the first user directly
 
@@ -252,6 +253,7 @@ def calc_similarity(user_a_DF,user_b_DF,min_intersec_size=5,simi_func=pearsonr):
         corr = 1 - ((np.mean(user_a_ratings) - np.mean(user_b_ratings))**2) / (np.mean(user_a_ratings)*np.mean(user_b_ratings))
         #print(corr)
         return (corr,1.0)'''
+
 
     if simi_func == PCC:
         simi = simi_func(user_a_ratings,user_b_ratings,np.average(user_a_all_ratings),np.average(user_b_all_ratings)) 
@@ -755,6 +757,10 @@ def group_union(group,test_f):
 
 
 def len_intersect(usr1_ratings,usr2_ratings):
+    if usr1_ratings.__class__ == pd.DataFrame:
+        initial = set(list(usr1_ratings['item_id']))        
+        initial = initial.intersection(list((ussr2_ratings['item_id'])))
+        return len(initial)
     res = len(set(usr1_ratings).intersection(usr2_ratings))
     return res
 

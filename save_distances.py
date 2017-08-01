@@ -1,5 +1,6 @@
 import groups_generator as gg
 import grs_recommendation_agg as grs
+import argparse
 import numpy as np
 import os
 import re
@@ -27,7 +28,9 @@ def compute_distances(dataset_path, first_user, last_user,out_dir, simi_func=gg.
             if u2%100 == 0:
                 print('{}->{}'.format(u1,u2))
             u2_DF = dataset[dataset.user_id == u2]            
-            dist,_ = gg.calc_similarity(u1_DF,u2_DF,simi_func=simi_func)
+            dist = gg.calc_similarity(u1_DF,u2_DF,simi_func=simi_func)
+            if dist.__class__ == tuple:
+                dist = dist[0]
             distances[u1_pos+1][u2] = dist
 
     np.save(out_path,distances,allow_pickle=False)
@@ -69,11 +72,50 @@ def concatenate_matrices(matrices_folder,to_save=False,out_file=''):
         return np.concatenate(d)
 
 
+
+FUNCTION_MAP = {'PCC':gg.PCC, 
+                'intersection':gg.len_intersect,
+                'cosine' : gg.cosine,
+                'jaccard' : gg.jaccard}
+
+def arg_parse():
+    p = argparse.ArgumentParser()
+    
+    p.add_argument('--base',type=str,
+        help="Folder containing the training instances")
+
+    p.add_argument('--simi_func',choices=FUNCTION_MAP.keys(),default='PCC',
+        help='Similarity function')
+
+    p.add_argument('-o','--out_dir',nargs='?')
+    
+    p.add_argument('--fu',type=int,default=1,
+        help = "The id of the first user which metric will be computed")
+        
+    p.add_argument('--lu',type=int,default=943,
+        help = "The id of the last user which metric will be computed")
+
+    parsed = p.parse_args()
+
+    parsed.simi_func = FUNCTION_MAP[parsed.simi_func]
+
+    if parsed.out_dir is None:
+        parsed.out_dir = parsed.base
+
+    return parsed
+
+
+
+
 if __name__ == '__main__':
-    dataset_path = sys.argv[1]
+    '''dataset_path = sys.argv[1]
     fu = int(sys.argv[2])
     lu = int(sys.argv[3])
     out_dir = sys.argv[4]
+    func = sys.argv[5]'''
 
-    compute_distances(dataset_path,fu,lu,out_dir)
+    args = arg_parse()
+    
+    compute_distances(args.base,args.fu,args.lu,args.out_dir,simi_func = args.simi_func)
+    
 
