@@ -9,6 +9,17 @@ import sys
 import glob
 import pandas as pd
 
+
+def construct_mapping(dataset):
+
+    users = sorted(dataset.user_id.unique())
+    users_map = {}
+    for i,u in enumerate(users):
+        users_map[u] = i+1 #since i starts from 0 and we want that users ids starts from 1
+
+    return users_map
+
+
 def compute_distances(dataset_path, first_user, last_user,out_dir, simi_func=gg.PCC):
 
     if not os.path.isdir(out_dir):

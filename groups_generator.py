@@ -20,7 +20,7 @@ import argparse
 from scipy.stats import pearsonr
 from scipy.spatial.distance import cosine
 from itertools import combinations
-
+import networkx as nx
 
 import multiprocessing as mp
 from multiprocessing import Process
@@ -763,6 +763,17 @@ def len_intersect(usr1_ratings,usr2_ratings):
         return len(initial)
     res = len(set(usr1_ratings).intersection(usr2_ratings))
     return res
+
+
+
+def construct_graph_from_matrix(mat,threshold=0.27):
+    edges = []
+    for i in range(len(mat)):
+        for j in range(i+1,len(mat)):
+            if mat[i][j] >= threshold:
+                edges.append([i,j])                    
+    G = nx.from_edgelist(edges)
+    return G
 
 
 def run(dataset,test_dataset,num_groups,group_size,threshold,groups_file="",
