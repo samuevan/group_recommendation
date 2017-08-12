@@ -58,7 +58,7 @@ def compute_distances(dataset_path, first_user, last_user,out_dir, simi_func=gg.
             #retorno uma tupla contendo distancia e 'confianca'
             if dist.__class__ == tuple:
                 dist = dist[0]
-            distances[users_pos_map[u1]][users_pos_map[u2]] = dist
+            distances[u1_pos+1][users_pos_map[u2]] = dist
 
     np.save(out_path,distances,allow_pickle=False)
 
