@@ -12,7 +12,7 @@ import sys
 import groups_generator as gg
 import ipdb
 import argparse
-
+import glob
 
 
 
@@ -189,7 +189,7 @@ def oraculus(rec_rankings,group,train_DF,test_DF,i2sug=10):
     #remove the items present in the train dataset for any of the users
     remove_items_in_train(train_DF,group,group_gt)
 
-    for i in range(len(group),i2sug):
+    for i in range(len(group_gt),i2sug):
         group_gt.append((9999999,0.0001))
 
     return group_gt[:i2sug]
@@ -247,13 +247,14 @@ def parse_args():
     if parsed.out_dir == '':
         parsed.out_dir = parsed.base_dir
 
-    base_rec_path = parsed.part + "-" + parsed.base_rec + ".out"
-    parsed.base_rec = os.path.join(parsed.base_dir,base_rec_path)
+    #base_rec_path = parsed.part + "-" + parsed.base_rec + ".out"
+    #parsed.base_rec = os.path.join(parsed.base_dir,base_rec_path)
 
     parsed.test_file = os.path.join(parsed.base_dir,parsed.part+'.test')
     parsed.train_file = os.path.join(parsed.base_dir,parsed.part+'.base')
 
-    parsed.groups_file = parsed.groups_file.replace('u1',parsed.part)
+    #we use the same groups for all partitions
+    #parsed.groups_file = parsed.groups_file.replace('u1',parsed.part)
 
 
     return parsed
@@ -261,9 +262,6 @@ def parse_args():
 
 
 def run_grs_ranking():
-
-
-    args = parse_args()
 
     groups = read_groups(args.groups_file)
 
@@ -295,15 +293,30 @@ def run_grs_ranking():
         os.mkdir(args.out_dir)
 
     print("here saving my favorite rankings")
+    #ipdb.set_trace()
     out_file = os.path.basename(args.base_rec).replace('.out','')
-    out_file += os.path.basename(args.groups_file).replace(args.part+'.groups','')
+    out_file += re.sub('.*groups','',os.path.basename(args.groups_file))
+    #out_file += os.path.basename(args.groups_file).replace(args.part+'.groups','')
     out_file = os.path.join(args.out_dir,out_file)
 
-    save_group_rankings(avg_group_rec,out_file+'_avg.out')
-    save_group_rankings(LM_group_rec,out_file+'_lm.out')
-    save_group_rankings(borda_group_rec,out_file+'_borda.out')
-    save_group_rankings(oraculus_group_rec,out_file+'_GT.out')
+    save_group_rankings(avg_group_rec,out_file+'_avg.gout')
+    save_group_rankings(LM_group_rec,out_file+'_lm.gout')
+    save_group_rankings(borda_group_rec,out_file+'_borda.gout')
+    save_group_rankings(oraculus_group_rec,out_file+'_GT.gout')
 
 
 if __name__ == '__main__':
-    run_grs_ranking()
+    args = parse_args()
+    rec_partitions = sorted(glob.glob(os.path.join(args.base_dir,"*"+args.base_rec+".out")))
+
+    #base_recs_names = [os.path.basename(rec) for rec in rec_partitions]
+
+    for base_rec in rec_partitions:
+        args.base_rec = base_rec
+        curr_part = re.search('u[1-9]+',base_rec).group(0)
+        #curr_part = base_rec[:2] #the two first caracthers are the partiton
+        args.test_file = args.test_file.replace(args.part,curr_part)
+        args.train_file = args.train_file.replace(args.part,curr_part)
+        args.part = curr_part
+
+        run_grs_ranking()
