@@ -10,19 +10,13 @@ import glob
 import pandas as pd
 
 
-def construct_mapping(dataset):
-
-    users = sorted(dataset.user_id.unique())
-    users_pos_map = {}
-    pos_users_map = {}
-    for i,u in enumerate(users):
-
-        users_pos_map[u] = i+1 #since i starts from 0 and we want that users ids starts from 1
-        pos_users_map[i+1] = u
-    return users_pos_map, pos_users_map
+FUNCTION_MAP = {'PCC':gg.PCC,
+                'intersection':gg.len_intersect,
+                'cosine' : gg.cosine,
+                'jaccard' : gg.jaccard}
 
 
-def compute_distances(dataset_path, first_user, last_user,out_dir, simi_func=gg.PCC):
+def compute_distances(dataset_path, first_user, last_user,out_dir, simi_func=FUNCTION_MAP['PCC']):
     '''
     Input
     dataset_path: The path to the dataset (constains triples (user,item,rating))
@@ -97,13 +91,6 @@ def concatenate_matrices(matrices_folder,to_save=False,out_file=''):
         np.save(os.path.join(matrices_folder,'distances_complete'),final_matrix,allow_pickle=False)
     else:
         return np.concatenate(d)
-
-
-
-FUNCTION_MAP = {'PCC':gg.PCC,
-                'intersection':gg.len_intersect,
-                'cosine' : gg.cosine,
-                'jaccard' : gg.jaccard}
 
 def arg_parse():
     p = argparse.ArgumentParser()

@@ -21,7 +21,7 @@ from scipy.stats import pearsonr
 from scipy.spatial.distance import cosine
 from itertools import combinations
 import networkx as nx
-import save_distances as sd
+import utils
 import multiprocessing as mp
 from multiprocessing import Process
 from multiprocessing import Queue,Manager
@@ -155,18 +155,11 @@ of ratings
 def PCC(user_a_ratings,user_b_ratings,user_a_mean,user_b_mean):
 
     num = sum([(arat-user_a_mean)*(brat-user_b_mean) for arat,brat in zip(user_a_ratings,user_b_ratings)])
-
     dena = sum([(arat-user_a_mean)**2 for arat in user_a_ratings])**0.5
-
     denb = sum([(brat-user_b_mean)**2 for brat in user_b_ratings])**0.5
-
     similarity = num/(dena * denb)
 
     return (similarity,1.0)
-
-
-
-
 
 
 '''
@@ -507,10 +500,11 @@ dataset: pandas Dataframe containg all the data used to construc the groups
 perc_test: percentage of group items (or user items case by_group = False)
 to be used as test
 by_group: defines if the partitioning will be performed considering the groups
-or the users
+or the users (not used in this version)
 use_valid : defines if the partitioning will consider a
 '''
-def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,by_group=True, use_valid=False):
+def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,
+        by_group=True, num_folds = 1, use_valid=True):
 
     if not dataset.__class__ == pd.DataFrame:
         dataset = read_ratings_file(dataset)
@@ -520,33 +514,49 @@ def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,by_gro
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)
 
-    #ipdb.set_trace()
-    dataset = make_test_fold_from_groups(groups,dataset,perc_test)
-    test_dataset = dataset[dataset.test == 1]
 
-    test_file = os.path.join(out_dir,'u.test')
-    test_dataset.to_csv(test_file, header=False, index=False, sep="\t", columns=out_cols)
+    for part in range(1,numfolds+1):
 
-    ipdb.set_trace()
-    base_and_val = dataset[dataset.test == 0]
+        if 'test' in dataset.columns:
+            del(dataset['test'])
+
+        dataset = make_test_fold_from_groups(groups,dataset,perc_test)
+        test_dataset = dataset[dataset.test == 1]
+
+        test_file = os.path.join(out_dir,'u{}.test'.format(part))
+        test_dataset.to_csv(test_file, header=False, index=False, sep="\t", columns=out_cols)
+
+        ipdb.set_trace()
+        base_and_val = dataset[dataset.test == 0]
 
 
-    if use_valid:
-        del(base_and_val['test'])
-        base_and_val.reset_index(drop=True,inplace=True)
-        perc_vali = perc_test / (1-perc_test)
-        base_and_val = make_test_fold_from_groups(groups,base_and_val, perc_test = perc_vali)
+        #we use these if statments in order to control the construction of the
+        #reeval folder and the validation files
+        reeval_dir = out_dir
+        if use_valid:
+            reeval_dir = os.path.join(out_dir,'reeval')
+            if not os.path.isdir(reeval_dir):
+                os.mkdir(reeval_dir)
 
-        base_file = os.path.join(out_dir,'u.base')
-        val_file = os.path.join(out_dir,'u.validation')
-
-        base_and_val[base_and_val.test == 1].to_csv(val_file, header=False, index=False, sep="\t", columns=out_cols)
-        base_and_val[base_and_val.test == 0].to_csv(base_file, header=False, index=False, sep="\t", columns=out_cols)
-
-    else:
-        baseval_file = os.path.join(out_dir,'u.base')
+        #construct the files in the reeval dataset
+        baseval_file = os.path.join(reeval_dir,'u{}.base'.format(part))
         base_and_val.to_csv(baseval_file, header=False, index=False, sep="\t", columns=out_cols)
+        os.system('cp {} {}'.format(test_file,reeval_dir))
 
+        if use_valid:
+            #construct train/validation/test in the main file
+            del(base_and_val['test'])
+            #reconstruct the indexes in order to associate the labels in the
+            #make_test_fold_from_groups function
+            base_and_val.reset_index(drop=True,inplace=True)
+            perc_vali = perc_test / (1-perc_test)
+            base_and_val = make_test_fold_from_groups(groups,base_and_val, perc_test = perc_vali)
+
+            base_file = os.path.join(out_dir,'u{}.base'.format(part))
+            val_file = os.path.join(out_dir,'u{}.validation'.format(part))
+
+            base_and_val[base_and_val.test == 1].to_csv(val_file, header=False, index=False, sep="\t", columns=out_cols)
+            base_and_val[base_and_val.test == 0].to_csv(base_file, header=False, index=False, sep="\t", columns=out_cols)
 
 
 '''
@@ -663,7 +673,7 @@ def similarity_groups_strong_fast(initial_dataset,
         #TODO adicionar calculo de lista de adjacencia
 
     #positions_bigger_than_t = []
-    user_pos_map,pos_user_map = sd.construct_mapping(initial_dataset)
+    user_pos_map,pos_user_map = utils.construct_mapping(initial_dataset)
     positions_bigger_than_t  = construct_adjacency_dict(users_similarity_matrix,pos_user_map,threshold)
     '''for i in range(len(users_similarity_matrix)):
         positions_bigger_than_t.append([])

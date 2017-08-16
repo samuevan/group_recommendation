@@ -23,12 +23,12 @@ input_headers = ("user_id", "item_id", "rating")#, "timestamp")
 types = {'user_id':np.int32,'item_id':np.int32,'rating':np.float64}#,'timestamp':np.int32}
 
 def read_ratings_file(addr, sep="\t",default_headers=input_headers,default_types=types):
-    
+
     frame = pd.read_csv(addr, sep,header=None)
     #remove the timestamp column
     if len(frame.columns) == 4:
         del frame[3]
-    frame.columns = input_headers            
+    frame.columns = input_headers
     return frame
 
 
@@ -64,7 +64,7 @@ receives a path to a file whose each line contains group_id:u1,u2,u3,u4,u5
 and returns a dictionary or an array like data structure containing the groups
 '''
 def read_groups(path,return_dict=False):
-    
+
     if return_dict:
         groups = {}
     else:
@@ -81,23 +81,26 @@ def read_groups(path,return_dict=False):
 
     return groups
 
+
+def construct_groups_ground_truth(groups,test_ratings):
+#TODO fazer a implementacao tambem como dicionario
+#TODO incluir os ratings no retor de retorno
 '''
 This function constructs the ground truth for the groups
 We consisider an item as relevant to a group if all the users in the group
 rated the item with 4 or more in the test data*
 
-*actually, if we are using the same pre processing we used in ERA we filter 
-we are considering all the items in the test set as relevants, since they were 
+*actually, if we are using the same pre processing we used in ERA we filter
+we are considering all the items in the test set as relevants, since they were
 previously filtred by the users median
 '''
-def construct_groups_ground_truth(groups,test_ratings):
-#TODO fazer a implementacao tambem como dicionario
+
 
     groups_gt = []
-        
+
     for group_index, group in enumerate(groups):
         ground_truth = set(test_ratings[test_ratings.user_id == group[0]]['item_id'])
-        #since we previously filtered the ratings by a treshold to construct 
+        #since we previously filtered the ratings by a treshold to construct
         #the GT we just computes the users' items intersection
         for user in group[1:]:
             user_items = test_ratings[test_ratings.user_id == user]['item_id']
@@ -120,7 +123,7 @@ def grs_precision_at(rank_recomm, ground_truth,num_items_to_eval=10):
         kx = rank_recomm[i] #cada linha tem um item e o score da regressao
         if kx.__class__ == tuple:
             kx = kx[0]
-        #kx_in_test = [True for item_rat in test if item_rat[0] == kx]         
+        #kx_in_test = [True for item_rat in test if item_rat[0] == kx]
         if kx in ground_truth: #len(kx_in_test) > 0:
             #print(kx)
             hits = hits+1;
@@ -128,6 +131,78 @@ def grs_precision_at(rank_recomm, ground_truth,num_items_to_eval=10):
     prec = hits/num_items_to_eval
 
     return prec
+
+def grs_recall_at(rank_recomm, ground_truth,num_items_to_eval=10):
+    hits = 0.0
+
+    for i in range(min(num_items_to_eval,len(rank_recomm))):
+        kx = rank_recomm[i] #cada linha tem um item e o score da regressao
+        if kx.__class__ == tuple:
+            kx = kx[0]
+
+        if kx in ground_truth:
+            hits = hits+1;
+
+    prec = hits/len(ground_truth)
+
+    return prec
+
+
+
+'''rank_comm : Recommended list
+test : list with the items the user already seen
+'''
+def grs_weighted_precision_at(rank_recomm, test,num_items_to_eval):
+    hits = 0.0
+    avg_prec = 0.0
+    #Considerando somente os 100 primeiros
+    for i in range(num_items_to_eval):
+        kx = rank_recomm[i] #cada linha tem um item e o score da regressao
+        kx_in_test = [True for item_rat in test if item_rat[0] == kx]
+        if len(kx_in_test) > 0:
+            hits = hits+1;
+            avg_prec += hits/(i + 1);
+
+    #print "hits: " + str(hits) + "avg_prec: " +str(avg_prec)
+    #a = input()
+    if  hits != 0:
+        prec = avg_prec/min(len(test),num_items_to_eval)
+        return prec
+    else:
+        return 0
+
+
+
+
+def grs_MAP(groups_rankings, groups_gt,size_at=10):
+
+    map_value = 0.0
+    num_users_test_has_elem = 0
+    for key in groups_rankings.keys():
+        if len(groups_gt[key]) > 0:
+            #print "user: " + str(key)
+            map_value += grs_weighted_precision_at(groups_rankings[key],groups_gt[key],size_at)
+            num_users_test_has_elem += 1
+
+    map_value = map_value/len(agg_rankings)
+
+    return map_value
+
+
+def grs_avg_precision_at(groups,groups_gt):
+
+    prec = 0.0
+    num_groups_with_test = 0
+
+    for grp_id, group in enumerate(groups):
+        prec += grs_precision_at(input_ranking[grp_id],groups_gt[grp_id])
+        #computes the number of groups with items in test set
+        if len(groups_gt[grp_id]) > 0:
+            num_groups_with_test += 1
+
+    final_prec = prec/num_groups_with_test
+    return final_prec
+
 
 
 
@@ -140,17 +215,7 @@ if __name__ == "__main__":
     input_ranking = rankings_dict(input_ranking_file,10)
     groups = read_groups(groups_file)
     test = read_ratings_file(test_file)
-        
+
     groups_gt = construct_groups_ground_truth(groups,test)
     #ipdb.set_trace()
-
-    prec = 0.0
-    num_groups_with_test = 0.0
-    for grp_id, group in enumerate(groups):
-        prec += grs_precision_at(input_ranking[grp_id],groups_gt[grp_id])
-        if len(groups_gt[grp_id]) > 0:
-            num_groups_with_test += 1
-
-    final_prec = prec/num_groups_with_test
-    print(final_prec)
-        
+    
