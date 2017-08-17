@@ -216,6 +216,7 @@ def grs_MAP(groups_rankings, groups_gt,size_at=10):
     for key in group_keys:
         if len(groups_gt[key]) > 0:
             #print "user: " + str(key)
+            #ipdb.set_trace()
             map_value += grs_weighted_precision_at(groups_rankings[key],groups_gt[key],size_at)
             num_users_test_has_elem += 1
 

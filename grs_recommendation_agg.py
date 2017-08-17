@@ -96,7 +96,7 @@ def remove_items_in_train(train_DF,group,rank):
             rank.pop(item)
         else:
             #TODO too costy
-            rank = [(x,y) for x in rank if x!= item]
+            rank = [(x,y) for x,y in rank if x!= item]
 
 
 
@@ -158,6 +158,86 @@ def agg_ranking_average(rec_rankings,group,train_DF,i2sug=10):
 
 
 
+def MRA_comb(rankings,group,train_DF,rank_size=10):
+    scores = {}
+    counting = {} #counts how many times the items apepars in the rankings
+    if isinstance(rankings,dict):
+        rankings_to_agg = list(rankings.values())
+    else:
+        rankings_to_agg = rankings
+
+    #pega o tamanho do maior ranking para o caso de rankings de tamanhos diferentes
+    input_size = max([len(rankings_to_agg[i]) for i in range(len(rankings_to_agg))])
+
+    final_rank = []
+    #percorre os rankings posicao a posicao
+    for pos in range(input_size):
+        for rank in rankings_to_agg:
+            if pos < len(rank):
+                #para cada ranking, conta o numero de vezes que o item na posicao
+                #corrente já apareceu
+                if rank[pos].__class__ == tuple:
+                    elem = rank[pos][0]
+                else:
+                    elem = rank[pos]
+
+                if elem in scores:
+                    scores[elem] += 1
+                    #caso o item tenha aparecido em mais de metada dos
+                    #rankings (median) ele eh adicionado no ranking final
+                    #e removido do dicionario de controle
+                    if scores[elem] >= (len(rankings)/2):
+                        final_rank.append((elem,scores[elem]))
+                        scores.pop(elem)
+                elif not elem in final_rank:
+                    scores[elem] = 1
+
+    #caso nao tenha preenchido o total de items necessarios para o tamanho do
+    #raking de saida, adiciona os items ordenados pela frequencia dos mesmos nos
+    #rankings de entrada. Note que essa frequencia pode ser inclusive maior que
+    #a mediana, mas o que importa no metodo eh o instante em que um item alcanca
+    #a mediana das contagems
+
+    if len(final_rank) < rank_size:
+        sorted_scores = sorted(list(scores.items()), key = lambda tup : tup[1], reverse = True)
+        pos = 0
+        #while len(final_rank) < rank_size and pos < len(scores):
+        for elem in sorted_scores:
+            final_rank.append(elem)
+            pos += 1
+
+    #remove the items that any user rated in train
+    remove_items_in_train(train_DF,group,final_rank)
+
+    return final_rank[:rank_size]
+
+
+def RRF_func(pos,k):
+    return 1.0/(k+pos)
+
+def RRF_comb(rankings,group,train_DF,rank_size=10,k=60):
+    scores = {}
+    counting = {} #counts how many times the items apepars in the rankings
+    if isinstance(rankings,dict):
+        rankings_to_agg = list(rankings.values())
+    else:
+        rankings_to_agg = rankings
+
+    for rank in rankings_to_agg:
+        for pos,elem in enumerate(rank):
+            if elem.__class__ == tuple:
+                elem = elem[0]
+
+            if elem in scores :
+                scores[elem] += RRF_func(pos,k)
+            else:
+                scores[elem] = RRF_func(pos,k)
+
+    final_rank = [(x,y) for x,y in sorted(scores.items(), key = lambda tup : tup[1],reverse=True)]
+    remove_items_in_train(train_DF,group,final_rank)
+    return final_rank[:rank_size]
+
+
 def agg_ranking_borda(rec_rankings,group,train_DF,i2sug=10):
 
     borda_scores = {}
@@ -180,11 +260,36 @@ def agg_ranking_borda(rec_rankings,group,train_DF,i2sug=10):
     return final_ranking
 
 
+def rank_intersection(rankings):
+
+    ranks_without_score = []
+    for rank in rankings:
+        ranks_without_score.append([x[0] for x in rank])
+
+    initial = set(ranks_without_score[0])
+    for l in ranks_without_score[1:]:
+        initial = initial.intersection(l)
+    return initial
+
+def rank_union(rankings):
+
+    ranks_without_score = []
+    for rank in rankings:
+        ranks_without_score.append([x[0] for x in rank])
+
+    initial = set(ranks_without_score[0])
+    for l in ranks_without_score[1:]:
+        initial = initial.union(l)
+    return initial
+
 def oraculus(rec_rankings,group,train_DF,test_DF,i2sug=10):
     #group ground truth. i.e the items shared by the members of the group in the test set
-    intersection_test = list(gg.group_intersection(group,test_DF))
 
-    group_gt = [(x,1.0) for x in intersection_test]
+    intersection_test = list(gg.group_intersection(group,test_DF))
+    intersection_recomm = list(rank_union(rec_rankings))
+    #intersection_recomm = list(rank_intersection(rec_rankings))
+    #ipdb.set_trace()
+    group_gt = [(x,1.0) for x in intersection_recomm if x in intersection_test]
 
     #remove the items present in the train dataset for any of the users
     remove_items_in_train(train_DF,group,group_gt)
@@ -275,20 +380,21 @@ def run_grs_ranking():
     LM_group_rec = {}
     borda_group_rec = {}
     oraculus_group_rec = {}
-
+    MRA_group_rec = {}
+    RRF_group_rec = {}
     for group_i, group in enumerate(groups):
         if group_i%300 == 0:
             print(group_i)
 
         rankings = [users_rankings[user] for user in group]
-        #group_ranking_avg = agg_average_ranking(rankings)
         avg_group_rec[group_i] = agg_ranking_average(rankings,group,train,args.i2sug)
-        #group_ranking_LM = agg_least_misery_ranking(rankings)
+
         LM_group_rec[group_i] = agg_ranking_least_misery(rankings,group,train,args.i2sug)
         borda_group_rec[group_i] = agg_ranking_borda(rankings,group,train,args.i2sug)
+
         oraculus_group_rec[group_i] = oraculus(rankings,group,train,test,args.i2sug)
-
-
+        MRA_group_rec[group_i] = MRA_comb(rankings,group,train,args.i2sug)
+        RRF_group_rec[group_i] = RRF_comb(rankings,group,train,args.i2sug)
     if not os.path.isdir(args.out_dir):
         os.mkdir(args.out_dir)
 
@@ -303,6 +409,8 @@ def run_grs_ranking():
     save_group_rankings(LM_group_rec,out_file+'_lm.gout')
     save_group_rankings(borda_group_rec,out_file+'_borda.gout')
     save_group_rankings(oraculus_group_rec,out_file+'_GT.gout')
+    save_group_rankings(MRA_group_rec,out_file+'_MRA.gout')
+    save_group_rankings(RRF_group_rec,out_file+'_RRF.gout')
 
 
 if __name__ == '__main__':

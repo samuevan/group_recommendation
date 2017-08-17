@@ -776,7 +776,7 @@ def group_intersection(group,test_f):
         for user in group[1:]:
             initial = initial.intersection(list((test_f[test_f.user_id == user]['item_id'])))
         return initial
-    else:
+    elif test_f.__class__ == dict:
         try:
             initial = set(test_f[group[0]])
         except:
@@ -786,7 +786,6 @@ def group_intersection(group,test_f):
         for user in group[1:]:
             initial = initial.intersection(test_f[user])
         return initial
-
 
 
 
