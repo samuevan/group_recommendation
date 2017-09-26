@@ -2,6 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib
+import utils
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import groups_generator as gg
@@ -15,7 +16,7 @@ The average groups correlation
 
 TODO add distance matrix as aditional parameter
 '''
-def compute_group_statistics(groups,dataset,compute_corr = False):
+def compute_group_statistics(groups,dataset,compute_corr = False,distances=None):
 
 
     intersection = [gg.group_intersection(g,dataset) for g in groups]
@@ -109,3 +110,20 @@ def plot_distances_hist(distances,out_dir,out_file,threshold=0.27):
     #plt.show()
     plt.savefig(os.path.join(out_dir,out_file+'.pdf'))
     plt.close()
+
+
+def parse_args():
+    p = argparse.ArgumentParser()
+    
+
+    p.add_argument('--base',type=str,
+                    help='File containing the dataset to be analyzed')
+
+    p.add_argument('--group_file',type=str,
+                    help='File containg the groups used in the ')
+
+    p.add
+
+#if __name__ == "__main__":
+
+    

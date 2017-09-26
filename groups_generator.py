@@ -482,7 +482,7 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2):
                 test_indexes[user_item_index] = 1
 
 
-    ipdb.set_trace()
+    #ipdb.set_trace()
     return initial_dataframe.assign(test=pd.Series(test_indexes).values)
 
     #return users_test
@@ -515,7 +515,7 @@ def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,
         os.mkdir(out_dir)
 
 
-    for part in range(1,numfolds+1):
+    for part in range(1,num_folds+1):
 
         if 'test' in dataset.columns:
             del(dataset['test'])
@@ -526,7 +526,7 @@ def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,
         test_file = os.path.join(out_dir,'u{}.test'.format(part))
         test_dataset.to_csv(test_file, header=False, index=False, sep="\t", columns=out_cols)
 
-        ipdb.set_trace()
+        #ipdb.set_trace()
         base_and_val = dataset[dataset.test == 0]
 
 
@@ -877,6 +877,9 @@ def arg_parse():
     p.add_argument('--simi_func',default=PCC,
         help='Similarity function')
 
+    p.add_argument('--num_parts',type=int, default=5,
+        help="NUmber of random partitions to be created")
+
     p.add_argument('--before',action='store_true',
         help="If set the groups construction is perfomed using the dataset before the folds partitioning")
     p.add_argument('-o','--out_dir',nargs='?')
@@ -886,7 +889,7 @@ def arg_parse():
         help='NUmber of groups')
     p.add_argument('--group_size', type=int, default=5,
         help='Size of the groups')
-    p.add_argument('--t_value', type=float,default=0.3,
+    p.add_argument('--t_value', type=float,default=0.27,
         help='Threshold value used to construct the groups')
     p.add_argument('-n','--num_proc', type=int,default=1,
         help='Number of threads')
@@ -927,4 +930,4 @@ if __name__ == "__main__":
 
     groups = run(train,test,args.num_groups,args.group_size,args.t_value,groups_file,args.num_proc,args.strong,similarity_function=args.simi_func)
     save_groups(groups,groups_file)
-    construct_partitions_from_groups(groups,train,args.out_dir,perc_test=0.2,by_group=True, use_valid=True)
+    construct_partitions_from_groups(groups,train,args.out_dir,perc_test=0.2,by_group=True, use_valid=True,num_folds=args.num_parts)
