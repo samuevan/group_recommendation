@@ -1,5 +1,6 @@
 import groups_generator as gg
 import grs_recommendation_agg as grs
+import utils
 import argparse
 import numpy as np
 import os
@@ -30,7 +31,7 @@ def compute_distances(dataset_path, first_user, last_user,out_dir, simi_func=FUN
 
     out_path = os.path.join(out_dir,'distances_{}-{}'.format(first_user,last_user))
     dataset = gg.read_ratings_file(dataset_path)
-    users_pos_map,pos_users_map = construct_mapping(dataset)
+    users_pos_map,pos_users_map = utils.construct_mapping(dataset)
     all_users = sorted(list(dataset.user_id.unique()))
     users = [pos_users_map[i] for i in range(first_user,last_user+1)]
     #we use +2 to compensate the index 0 and the diference between the positions

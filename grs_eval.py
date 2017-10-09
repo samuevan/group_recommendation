@@ -258,6 +258,7 @@ if __name__ == "__main__":
 
 
     files = sorted(glob.glob(os.path.join(basedir,'*.gout')))
+    #ipdb.set_trace()
     partitions = set([re.search('u[1-9]+',fname).group(0) for fname in files])
     partitions = sorted(list(partitions))
 

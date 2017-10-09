@@ -13,7 +13,7 @@ import groups_generator as gg
 import ipdb
 import argparse
 import glob
-
+from collections import defaultdict
 
 
 
@@ -24,23 +24,25 @@ float_regex = r'[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?'
 results_items_regex_str = "(\d+):({0})".format(float_regex)
 results_items_regex = re.compile(results_items_regex_str)
 
-def rankings_dict(path,rank_size=100):
+def rankings_dict(paths,rank_size=100):
     """Generates a dictionary from a file of ranking algorithm results.
 
     path -- path to the results file.
 
     output: Dict where each key contains [(item,item_score)]
     """
-    f = open(path, 'r')
-    d = {}
-    for line in f:
-        user_id_result = results_user_id_regex.match(line)
-        user_id = int(user_id_result.group(0))
-        ranking = results_items_regex.findall(line, user_id_result.end())
-        # Assuming results are already sorted in descending order
-        items = [(int(i[0]),float(i[1])) for i in ranking[:rank_size]]
-        d[user_id] = items
-    f.close()
+    d = defaultdict(list)
+
+    for path in paths:	
+        f = open(path, 'r')
+        for line in f:
+            user_id_result = results_user_id_regex.match(line)
+            user_id = int(user_id_result.group(0))
+            ranking = results_items_regex.findall(line, user_id_result.end())
+            # Assuming results are already sorted in descending order
+            items = [(int(i[0]),float(i[1])) for i in ranking[:rank_size]]
+            d[user_id].append(items)
+        f.close()
     return d
 
 
@@ -331,8 +333,13 @@ def parse_args():
         help = 'folder containg the datasets')
     p.add_argument('-p','--part',type=str,default='u1',
         help='Partition to be used')
-    p.add_argument('--base_rec',type=str,required=True,
-        help='The file containing the recommendations performed by a base recommender')
+    p.add_argument('--base_recs',nargs='*',
+        help='Indicate the recommenders containing the recommendations used ' \
+        'to construct the group recommendation. When none recommender is set ' \
+        'all the recommenders in the base_dir will be used')
+    p.add_argument('--base_rec',type=str,
+        help='The algorithm currently used in the group recommendation.'
+             'Usually is one of the algorithms in args.base_recs')
     p.add_argument('--groups_file',type=str,required=True,
         help='The file containing the groups of users to whom the recommendation will be made')
     p.add_argument('--test_file', type=str,
@@ -341,7 +348,6 @@ def parse_args():
         help='The file containing the training file used by the base recommender')
     p.add_argument('-o','--out_dir',type=str,default='',
         help='Output folder. The group recommendations will be saved in this foder')
-
     p.add_argument('--i2use',type=int,default=20,
         help='Size of the input rankings')
     p.add_argument('--i2sug',type=int,default=10,
@@ -360,19 +366,23 @@ def parse_args():
 
     #we use the same groups for all partitions
     #parsed.groups_file = parsed.groups_file.replace('u1',parsed.part)
+     
+    if not parsed.base_recs:
+        recs_in_dir = set().union([rec[3:-4] for rec in sorted(glob.glob(os.path.join(parsed.base_dir,"*.out")))])
+        parsed.base_recs = list(recs_in_dir)    
+	        
 
 
     return parsed
 
 
 
-def run_grs_ranking():
+def run_grs_ranking(paths):
 
     groups = read_groups(args.groups_file)
 
-    users_rankings = rankings_dict(args.base_rec,rank_size=args.i2use)
+    users_rankings = rankings_dict(paths,rank_size=args.i2use)
 
-    #TODO preciso adicionar o arquivo de treino para conferir se o item não foi visto por nenhum usuario do grupo
     test = gg.read_ratings_file(args.test_file)
     train = gg.read_ratings_file(args.train_file)
 
@@ -385,8 +395,7 @@ def run_grs_ranking():
     for group_i, group in enumerate(groups):
         if group_i%300 == 0:
             print(group_i)
-
-        rankings = [users_rankings[user] for user in group]
+        rankings = [rank for user in group for rank in users_rankings[user]]
         avg_group_rec[group_i] = agg_ranking_average(rankings,group,train,args.i2sug)
 
         LM_group_rec[group_i] = agg_ranking_least_misery(rankings,group,train,args.i2sug)
@@ -400,7 +409,8 @@ def run_grs_ranking():
 
     print("here saving my favorite rankings")
     #ipdb.set_trace()
-    out_file = os.path.basename(args.base_rec).replace('.out','')
+    out_file = str(args.part)+'-'
+    out_file += '_'.join(args.base_recs)
     out_file += re.sub('.*groups','',os.path.basename(args.groups_file))
     #out_file += os.path.basename(args.groups_file).replace(args.part+'.groups','')
     out_file = os.path.join(args.out_dir,out_file)
@@ -415,16 +425,21 @@ def run_grs_ranking():
 
 if __name__ == '__main__':
     args = parse_args()
-    rec_partitions = sorted(glob.glob(os.path.join(args.base_dir,"*"+args.base_rec+".out")))
+    #rec_partitions = sorted(glob.glob(os.path.join(args.base_dir,"*"+args.base_rec+".out")))
+
+    rec_partitions = [sorted(glob.glob(os.path.join(args.base_dir,"*"+recomm+".out"))) \
+        for recomm in args.base_recs]
+
+    num_partitions = len(rec_partitions[0])
 
     #base_recs_names = [os.path.basename(rec) for rec in rec_partitions]
-
-    for base_rec in rec_partitions:
-        args.base_rec = base_rec
-        curr_part = re.search('u[1-9]+',base_rec).group(0)
+    #for base_rec_partition in base_rec:
+    for part in range(1,num_partitions+1):
+        #args.base_rec = base_rec
+        curr_part = 'u'+ str(part) #re.search('u[1-9]+',base_rec).group(0)
         #curr_part = base_rec[:2] #the two first caracthers are the partiton
         args.test_file = args.test_file.replace(args.part,curr_part)
         args.train_file = args.train_file.replace(args.part,curr_part)
-        args.part = curr_part
-
-        run_grs_ranking()
+        args.part = curr_part    
+        paths = [base_rec[part-1] for base_rec in rec_partitions]
+        run_grs_ranking(paths)
