@@ -466,8 +466,39 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2):
         if num_items_to_choose >= 1:
             groups_with_test += 1
 
+
+
+        #verify wich items in the intersection are already in the test_indexes
+        #we can use this strategy to minimize the impact of removing items that
+        #belongs to other groups training set
+        #In other words, we will verify if there are shared items in the test 
+        #amongst the groups and take advantage from this
+
+        items_already_in_test = []
+        for item_to_verify in items_intersec:
+            for user in group:
+                user_item_index = initial_dataframe[
+                                    (initial_dataframe.user_id == user) & 
+                                    (initial_dataframe.item_id == item_to_verify)
+                                    ].index
+                if test_indexes[user_item_index] == 1 and \
+                        not item_to_verify in items_already_in_test:
+
+                    items_already_in_test.append(item_to_verify)
+
+
+        #If there are a sufficient number of test items already marked as test
+        #by other groups, we do not need to worry adding more items in test to
+        #this specific group
+        #if len(items_already_in_test) < num_items_to_choose:
+
+        num_items_to_choose -= len(items_already_in_test)
+        [items_intersec.remove(item_del) for item_del in items_already_in_test]
+            
         #choose the items to be inserted in test
-        new_items = []
+        #receives items_already_in_test to set the flag of all the group users
+        #indicating that this item is in the test
+        new_items = items_already_in_test
         while num_items_to_choose > 0:
             new_item = items_intersec[random.randint(0,len(items_intersec)-1)]
             if not new_item in new_items:
@@ -532,6 +563,8 @@ def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,
 
         #we use these if statments in order to control the construction of the
         #reeval folder and the validation files
+
+
         reeval_dir = out_dir
         if use_valid:
             reeval_dir = os.path.join(out_dir,'reeval')
@@ -642,7 +675,7 @@ def construct_adjacency_dict(users_similarity_matrix,pos_user_map,threshold):
 
     Returns a dict which key = user_id and value = neighboors user_id
     '''
-    ipdb.set_trace()
+
     positions_bigger_than_t = {}
     for i in range(1,len(users_similarity_matrix)):
         u1_id = pos_user_map[i]
@@ -689,15 +722,22 @@ def similarity_groups_strong_fast(initial_dataset,
     #Constructing groups with high innner similarity
     #only considers the similarity with
     group_users = []
+    unique_groups = {}
     while constructed_groups < num_groups:
         #ipdb.set_trace()
-        if constructed_groups%50 == 0:
+        if constructed_groups%50 == 0 and constructed_groups > 0:
             print(constructed_groups)
 
         group_users = contruct_group_recursive([],users,[],group_size,positions_bigger_than_t)
+
+
         if len(group_users) > 0:
-            groups.append(group_users)
-            constructed_groups += 1
+            sorted_users = sorted(group_users)
+            if not str(sorted_users) in unique_groups:
+                if len(group_intersection(group_users, initial_dataset)) > 5:
+                    groups.append(group_users)
+                    unique_groups[str(sorted_users)] = None
+                    constructed_groups += 1
 
     return groups
 

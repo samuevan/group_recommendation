@@ -2,10 +2,62 @@ import os
 import pandas as pd
 import numpy as np
 import matplotlib
-import utils
 matplotlib.use('Agg')
+import utils
+import glob
+import ipdb
+from collections import defaultdict
 import matplotlib.pyplot as plt
 import groups_generator as gg
+
+
+
+
+def compute_group_statistics_all(basedir,groups_dir,groups_file):
+
+    proc_dataset = utils.read_ratings_file(os.path.join(basedir,'u.proc.data'))
+
+    base_partition_files = sorted(glob.glob(os.path.join(basedir,groups_dir,
+                                            'reeval','*.base')))
+    test_partition_files = sorted(glob.glob(os.path.join(basedir,groups_dir,
+                                            'reeval','*.test')))
+
+    base_partitions = map(utils.read_ratings_file,base_partition_files)
+    test_partitions = map(utils.read_ratings_file,test_partition_files)
+    
+    
+    ipdb.set_trace()
+    groups = utils.read_groups(groups_file)
+    
+
+    
+    base_stats = defaultdict(list);
+    for base in base_partitions:
+        res = compute_group_statistics(groups,base)
+        for key in res:
+            base_stats[key].append(res[key])
+
+
+    test_stats = defaultdict(list);
+    for test in test_partitions:
+        res = compute_group_statistics(groups,test)
+        for key in res:
+            test_stats[key].append(res[key])
+
+
+    for key_base,key_test in zip(base_stats,test_stats):
+        base_stats[key_base] = np.average(base_stats[key_base])
+        test_stats[key_test] = np.average(test_stats[key_test])
+
+
+    complete_stats = compute_group_statistics(groups,proc_dataset)
+    print(complete_stats) 
+    print(base_stats)
+    print(test_stats)
+    
+
+
+
 
 '''
 this function returns statistics for the groups
@@ -56,13 +108,25 @@ def compute_group_statistics(groups,dataset,compute_corr = False,distances=None)
             #print(avg_corr_total)
         avg_corr_total /= len(groups)
 
-    out = 'Unique users: {0}\nUnique items: {1}\n'
-    out += 'Unique groups {2}\nGroups with items: {3}\n'
-    out +='Avg number of group items (total): {4}\n'
-    out+='Avg number of group items (valid groups): {5}\nAvg. Group Correlation: {6}'
+
+    out = {
+            'Unique users' : len(unique_users),
+            'Unique items' : len(unique_items),
+            'Unique groups' : len(unique_groups), 
+            'Groups with items' : groups_with_items,
+            'Avg number of group items (total)' : sum(items_per_group)/len(groups),         
+            'Avg number of group items (valid groups)' : sum(items_per_group)/groups_with_items,
+            'Avg. Group Correlation' : avg_corr_total
+        }
+
+
+    #out = 'Unique users: {0}\nUnique items: {1}\n'
+    #out += 'Unique groups {2}\nGroups with items: {3}\n'
+    #out +='Avg number of group items (total): {4}\n'
+    #out+='Avg number of group items (valid groups): {5}\nAvg. Group Correlation: {6}'
 
     #print(out.format(len(unique_users),len(unique_items),len(unique_groups),groups_with_items,sum(items_per_group)/len(groups),sum(items_per_group)/groups_with_items,avg_corr_total))
-    return(out.format(len(unique_users),len(unique_items),len(unique_groups),groups_with_items,sum(items_per_group)/len(groups),sum(items_per_group)/groups_with_items,avg_corr_total))
+    return out
 
 
 def plot_distances_hist(distances,out_dir,out_file,threshold=0.27):
