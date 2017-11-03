@@ -18,15 +18,19 @@ def compute_group_statistics_all(basedir,groups_dir,groups_file):
     proc_dataset = utils.read_ratings_file(os.path.join(basedir,'u.proc.data'))
 
     base_partition_files = sorted(glob.glob(os.path.join(basedir,groups_dir,
-                                            'reeval','*.base')))
+                                            '*.base')))
     test_partition_files = sorted(glob.glob(os.path.join(basedir,groups_dir,
-                                            'reeval','*.test')))
+                                            '*.test')))
+
+    val_partition_files = sorted(glob.glob(os.path.join(basedir,groups_dir,
+                                            '*.validation')))
 
     base_partitions = map(utils.read_ratings_file,base_partition_files)
     test_partitions = map(utils.read_ratings_file,test_partition_files)
+    val_partitions = map(utils.read_ratings_file,val_partition_files)
     
     
-    ipdb.set_trace()
+    #ipdb.set_trace()
     groups = utils.read_groups(groups_file)
     
 
@@ -45,17 +49,27 @@ def compute_group_statistics_all(basedir,groups_dir,groups_file):
             test_stats[key].append(res[key])
 
 
-    for key_base,key_test in zip(base_stats,test_stats):
+    val_stats = defaultdict(list);
+    for val in val_partitions:
+        res = compute_group_statistics(groups,val)
+        for key in res:
+            val_stats[key].append(res[key])
+
+
+
+    for key_base,key_test,key_val in zip(base_stats,test_stats,val_stats):
         base_stats[key_base] = np.average(base_stats[key_base])
         test_stats[key_test] = np.average(test_stats[key_test])
+        val_stats[key_val] = np.average(val_stats[key_val])
 
 
     complete_stats = compute_group_statistics(groups,proc_dataset)
     print(complete_stats) 
     print(base_stats)
     print(test_stats)
+    print(val_stats)
     
-
+    return complete_stats,base_stats,test_stats,val_stats
 
 
 
@@ -78,6 +92,8 @@ def compute_group_statistics(groups,dataset,compute_corr = False,distances=None)
     unique_items = set()
     unique_groups = set()
     for group in intersection:
+        #if not group:
+        #    ipdb.set_trace()
         items_per_group.append(len(group))
         if items_per_group[-1] > 0:
             groups_with_items += 1

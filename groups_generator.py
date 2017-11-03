@@ -74,6 +74,7 @@ min_intersection and thresh to zero
 
 return one group of users
 '''
+
 def make_random_groups_with_minimum(dataset,group_size,min_intersection,users_ids,thresh=0, similarity_function=pearsonr):
     #users_ids = dataset.user_id.unique()
 
@@ -433,8 +434,9 @@ construct the groups.
 Output: The set of items that should be put in the test set for each user
          according to the groups
 '''
-def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2):
+def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2, share_items = True):
 
+    global args
     users_test = {}
     groups_with_test = 0
     groups_with_items = 0
@@ -475,18 +477,19 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2):
         #amongst the groups and take advantage from this
 
         items_already_in_test = []
-        for item_to_verify in items_intersec:
-            for user in group:
-                user_item_index = initial_dataframe[
-                                    (initial_dataframe.user_id == user) & 
-                                    (initial_dataframe.item_id == item_to_verify)
-                                    ].index
-                if test_indexes[user_item_index] == 1 and \
-                        not item_to_verify in items_already_in_test:
+        if args.share_items:
+            for item_to_verify in items_intersec:
+                for user in group:
+                    user_item_index = initial_dataframe[
+                                        (initial_dataframe.user_id == user) & 
+                                        (initial_dataframe.item_id == item_to_verify)
+                                        ].index
+                    if test_indexes[user_item_index] == 1 and \
+                            not item_to_verify in items_already_in_test:
 
-                    items_already_in_test.append(item_to_verify)
+                        items_already_in_test.append(item_to_verify)
 
-
+        #ipdb.set_trace()
         #If there are a sufficient number of test items already marked as test
         #by other groups, we do not need to worry adding more items in test to
         #this specific group
@@ -545,12 +548,13 @@ def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,
     if not os.path.isdir(out_dir):
         os.mkdir(out_dir)
 
-
+    #ipdb.set_trace()
     for part in range(1,num_folds+1):
 
         if 'test' in dataset.columns:
             del(dataset['test'])
 
+        #ipdb.set_trace()
         dataset = make_test_fold_from_groups(groups,dataset,perc_test)
         test_dataset = dataset[dataset.test == 1]
 
@@ -583,6 +587,7 @@ def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,
             #make_test_fold_from_groups function
             base_and_val.reset_index(drop=True,inplace=True)
             perc_vali = perc_test / (1-perc_test)
+            #ipdb.set_trace()
             base_and_val = make_test_fold_from_groups(groups,base_and_val, perc_test = perc_vali)
 
             base_file = os.path.join(out_dir,'u{}.base'.format(part))
@@ -734,8 +739,10 @@ def similarity_groups_strong_fast(initial_dataset,
         if len(group_users) > 0:
             sorted_users = sorted(group_users)
             if not str(sorted_users) in unique_groups:
-                if len(group_intersection(group_users, initial_dataset)) > 5:
+                if len(group_intersection(group_users, initial_dataset)) >= args.min_group_items:
                     groups.append(group_users)
+                    #i'm using a dict where the key is the sorted str of the group 
+                    #members and None as value
                     unique_groups[str(sorted_users)] = None
                     constructed_groups += 1
 
@@ -919,6 +926,14 @@ def arg_parse():
 
     p.add_argument('--num_parts',type=int, default=5,
         help="NUmber of random partitions to be created")
+
+    p.add_argument('--min_group_items',type=int,default=5,
+        help="Defines the minimum number of items a group should have in common.")
+
+    p.add_argument('--share_items',action='store_true',
+        help="If this argument was set the construction of the test fold will " \
+            "verify if any of the group items are already in the test set."
+             "If it was true, those items are 'shared' by the groups in the test set")
 
     p.add_argument('--before',action='store_true',
         help="If set the groups construction is perfomed using the dataset before the folds partitioning")
