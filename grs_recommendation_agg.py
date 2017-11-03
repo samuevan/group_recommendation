@@ -17,34 +17,6 @@ from collections import defaultdict
 
 
 
-results_user_id_regex_str = "(\d+)"
-results_user_id_regex = re.compile(results_user_id_regex_str)
-
-float_regex = r'[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?'
-results_items_regex_str = "(\d+):({0})".format(float_regex)
-results_items_regex = re.compile(results_items_regex_str)
-
-def rankings_dict(paths,rank_size=100):
-    """Generates a dictionary from a file of ranking algorithm results.
-
-    path -- path to the results file.
-
-    output: Dict where each key contains [(item,item_score)]
-    """
-    d = defaultdict(list)
-
-    for path in paths:	
-        f = open(path, 'r')
-        for line in f:
-            user_id_result = results_user_id_regex.match(line)
-            user_id = int(user_id_result.group(0))
-            ranking = results_items_regex.findall(line, user_id_result.end())
-            # Assuming results are already sorted in descending order
-            items = [(int(i[0]),float(i[1])) for i in ranking[:rank_size]]
-            d[user_id].append(items)
-        f.close()
-    return d
-
 
 '''
 receives a path to a file whose each line contains group_id:u1,u2,u3,u4,u5
@@ -262,33 +234,11 @@ def agg_ranking_borda(rec_rankings,group,train_DF,i2sug=10):
     return final_ranking
 
 
-def rank_intersection(rankings):
-
-    ranks_without_score = []
-    for rank in rankings:
-        ranks_without_score.append([x[0] for x in rank])
-
-    initial = set(ranks_without_score[0])
-    for l in ranks_without_score[1:]:
-        initial = initial.intersection(l)
-    return initial
-
-def rank_union(rankings):
-
-    ranks_without_score = []
-    for rank in rankings:
-        ranks_without_score.append([x[0] for x in rank])
-
-    initial = set(ranks_without_score[0])
-    for l in ranks_without_score[1:]:
-        initial = initial.union(l)
-    return initial
-
 def oraculus(rec_rankings,group,train_DF,test_DF,i2sug=10):
     #group ground truth. i.e the items shared by the members of the group in the test set
 
     intersection_test = list(gg.group_intersection(group,test_DF))
-    intersection_recomm = list(rank_union(rec_rankings))
+    intersection_recomm = list(utils.rank_union(rec_rankings))
     #intersection_recomm = list(rank_intersection(rec_rankings))
     #ipdb.set_trace()
     group_gt = [(x,1.0) for x in intersection_recomm if x in intersection_test]
@@ -300,9 +250,6 @@ def oraculus(rec_rankings,group,train_DF,test_DF,i2sug=10):
         group_gt.append((9999999,0.0001))
 
     return group_gt[:i2sug]
-
-
-
 
 
 
@@ -320,8 +267,8 @@ def save_group_rankings(group_rankings,out_file_path):
             str_aux += ']\n'
             out_file.write(str_aux)
 
-#def agg_rating_average(rec_ratings):
 
+#def agg_rating_average(rec_ratings):
 
 #def agg_average(recomendations,rank=True)
 
@@ -379,9 +326,9 @@ def parse_args():
 
 def run_grs_ranking(paths):
 
-    groups = read_groups(args.groups_file)
+    groups = utils.read_groups(args.groups_file)
 
-    users_rankings = rankings_dict(paths,rank_size=args.i2use)
+    users_rankings = utils.rankings_dict(paths,rank_size=args.i2use)
 
     test = gg.read_ratings_file(args.test_file)
     train = gg.read_ratings_file(args.train_file)
