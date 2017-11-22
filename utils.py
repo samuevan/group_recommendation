@@ -1,6 +1,10 @@
 import pandas as pd
 import numpy as np
-
+import ipdb
+import re
+import os
+import glob
+from collections import defaultdict
 
 
 
@@ -171,4 +175,134 @@ def group_union(group,test_f):
     for user in group[1:]:
         initial = initial.union(list((test_f[test_f.user_id == user]['item_id'])))
     return initial
+
+
+
+
+
+def read_letor_data(datafile):
+    results_relevance_regex_str = "(\d+)"
+    results_relevance_regex = re.compile(results_relevance_regex_str)
+
+    results_user_id_regex_str = "qid:(\d+)"
+    results_user_id_regex = re.compile(results_user_id_regex_str)
+
+    results_item_id_regex_str = "#docid\s*=\s*(\d+)"
+    results_item_id_regex = re.compile(results_item_id_regex_str)
+
+    float_regex = r'[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?'
+    results_items_regex_str = "\d+:({0})".format(float_regex)
+    results_items_regex = re.compile(results_items_regex_str)
+
+       
+    dataset = []
+
+    with open(datafile,'r') as f1:
+        for line1 in f1:
+            relevance = int(results_relevance_regex.match(line1).group(0))
+            user_id = int(results_user_id_regex.findall(line1)[0])
+            item_id = int(results_item_id_regex.findall(line1)[0])
+            attributes = results_items_regex.findall(line1)
+            
+            atts_values = [float(att[1]) for att in attributes]
+            instance = (relevance,user_id,item_id) + tuple(atts_values)            
+            dataset.append(instance)
+
+    labels = ['relevance','user_id','item_id']
+    [labels.append('att'+str(i+1)) for i in range(len(dataset[0])-len(labels))]
+    types = {'user_id':np.int32,'item_id':np.int32,'relevance':np.int32}
+
+    
+    data_pandas = pd.DataFrame(dataset,columns=labels)
+
+    for key in types:
+        data_pandas[key] = data_pandas[key].astype(types[key])
+    #ipdb.set_trace()
+    return data_pandas
+
+
+
+def contruct_groups(basedir,outdir,dist_file,
+                        num_parts=5,
+                        num_groups=3000,
+                        list_ggroup_sizes=[3,5],
+                        list_tresh=[0.27],
+                        list_min_items=[5]):
+
+    for gsz in list_group_sizes:
+        for thresh in list_tresh:
+            for min_items in list_min:    
+                 cmd = "python groups_generator.py --before --strong  --base {} "\
+                    "--num_parts {} --num_groups {} --group_size {} --t_value {} "\
+                    "--min_group_items {} --dist_file {} -o {}"
+
+
+
+
+
+
+
+def save_letor_data_from_pandas(dataframe,out_file):
+
+    with open(out_file,'w') as out:
+        for item in dataframe.iterrows():
+            #item[0] stores the item index and data[1] stores the actual row values
+            data_item = item[1]
+            s = '{relevance:.0f} qid:{user_id:.0f} '
+            for i in range(1,len(data_item[2:])):
+                s += str(i)+':{att'+str(i)+'} '
+
+            s += '#docid = {item_id:.0f} inc = 0.0 prob = 0.0\n'
+            out.write(s.format(**data_item))
+
+
+        
+def merge_letor_files(file1,file2):
+
+
+    data1 = read_letor_data(file1)
+    data2 = read_letor_data(file2)
+
+    data1.sort_values(by=['user_id','item_id'], inplace = True)
+    data2.sort_values(by=['user_id','item_id'], inplace = True)
+
+    del(data2['relevance'])
+    del(data2['user_id'])
+    del(data2['item_id'])
+    
+    #the columns of the dataset data1 minus the columns relevance, user_id and item_id
+    num_valued_atts = len(data1.columns)-3 
+    data2_columns = data2.columns
+
+    new_column_names = {data2_columns[pos]:'att'+str(num_valued_atts+pos+1) 
+                        for pos in range(len(data2_columns))}
+
+
+    data2.rename_axis(new_column_names,axis=1,inplace=True)
+    data2.reset_index(drop=True,inplace=True)
+
+    data3 = pd.concat([data1,data2],axis=1)
+
+    return data3           
+
+
+def merge_letor_files_in_folders(folder1,folder2,out_folder):
+
+    if not os.path.isdir(out_folder):
+        os.mkdir(out_folder)
+
+    letor_files_folder1 = sorted(glob.glob(os.path.join(folder1,'*.letor')))
+    letor_files_folder2 = sorted(glob.glob(os.path.join(folder2,'*.letor')))
+
+    try:
+        if not len(letor_files_folder1) == len(letor_files_folder2):
+            raise Exception
+    except:
+        print("The folders cointain different number of letor files")
+
+    for f1,f2 in zip(letor_files_folder1,letor_files_folder2):
+        merged = merge_letor_files(f1,f2)
+        save_letor_data_from_pandas(merged,os.path.join(out_folder,
+                                                os.path.basename(f1)))
+
 

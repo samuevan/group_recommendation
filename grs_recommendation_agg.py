@@ -73,6 +73,8 @@ def remove_items_in_train(train_DF,group,rank):
             rank = [(x,y) for x,y in rank if x!= item]
 
 
+    return rank
+
 
 '''
 input:
@@ -314,9 +316,13 @@ def parse_args():
     #we use the same groups for all partitions
     #parsed.groups_file = parsed.groups_file.replace('u1',parsed.part)
      
+    file_regex = r".*u[1-5]-([a-z A-Z]*)"
     if not parsed.base_recs:
-        recs_in_dir = set().union([rec[3:-4] for rec in sorted(glob.glob(os.path.join(parsed.base_dir,"*.out")))])
-        parsed.base_recs = list(recs_in_dir)    
+        recs_in_dir = set().union([re.match(file_regex,rec).groups()[0] \
+                        for rec in sorted(glob.glob(os.path.join(parsed.base_dir,"*.out")))])
+        #ipdb.set_trace()
+        parsed.base_recs = list(recs_in_dir)
+
 	        
 
 
