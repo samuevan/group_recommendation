@@ -94,7 +94,11 @@ def normalize_scores(rec_rankings):
         scores = [score for _,score in rank]
         max_s = max(scores)
         min_s = min(scores)
-        normalized_rank = [(item,(score-min_s)/(max_s-min_s)) for item,score in rank]
+        norm_den = max_s-min_s
+        if norm_den == 0:
+            norm_den = max_s
+
+        normalized_rank = [(item,(score-min_s)/norm_den) for item,score in rank]
         norm_rec_rankings.append(normalized_rank)
 
 
