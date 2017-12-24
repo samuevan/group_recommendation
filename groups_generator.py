@@ -118,12 +118,17 @@ def random_groups_with_minimum(dataset,
 
 
 def save_groups(groups,out_file):
-
     print("Saving group file")
+
     with open(out_file,'w') as out_f:
-        for group_id in range(len(groups)):
+        if type(groups) == dict:
+            groups_ids = sorted(groups.keys())
+        else:
+            groups_ids = range(len(groups))
+
+        for group_pos,group_id in enumerate(groups_ids):
             group_str = ",".join([str(x) for x in groups[group_id]])
-            out_f.write("{0}:{1}\n".format(group_id,group_str))
+            out_f.write("{0}:{1}\n".format(group_pos,group_str))
 
 
 
@@ -434,7 +439,8 @@ construct the groups.
 Output: The set of items that should be put in the test set for each user
          according to the groups
 '''
-def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2, share_items = True):
+def make_test_fold_from_groups(groups, initial_dataframe,grs_checkins=None,
+                                perc_test = 0.2, share_items = True):
 
     global args
     users_test = {}
@@ -443,9 +449,26 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2, share_
 
     test_indexes = np.zeros(len(initial_dataframe),dtype=int)
 
-    for group_id, group in enumerate(groups):
-        #ipdb.set_trace()
-        items_intersec = list(group_intersection(group,initial_dataframe))
+    for group_id, group in enumerate(groups):          
+        print(group_id)
+
+        if type(groups) == dict:
+            group_key = group
+            group = groups[group_key]
+
+            #this indicates that the itens shared by the group are in a specific
+            #dataframe    
+            if not grs_checkins is None:
+                items_intersec = grs_checkins[
+                                    grs_checkins.user_id == 
+                                    group_key]['item_id'].values
+            else:
+                items_intersec = list(group_intersection(group,initial_dataframe))
+
+        else:
+            items_intersec = list(group_intersection(group,initial_dataframe))
+
+
         size_test = int(perc_test * len(items_intersec))
         if len(items_intersec) > 0:
             groups_with_items += 1
@@ -480,6 +503,8 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2, share_
         if args.share_items:
             for item_to_verify in items_intersec:
                 for user in group:
+                    #if user == 14726:
+                    #    ipdb.set_trace()
                     user_item_index = initial_dataframe[
                                         (initial_dataframe.user_id == user) & 
                                         (initial_dataframe.item_id == item_to_verify)
@@ -510,6 +535,7 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2, share_
 
 
         #insert the items in the final structure
+        #ipdb.set_trace()
         for item_to_insert in new_items:
             for user in group:
                 user_item_index = initial_dataframe[(initial_dataframe.user_id == user) & (initial_dataframe.item_id == item_to_insert)].index
@@ -517,7 +543,11 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2, share_
 
 
     #ipdb.set_trace()
-    return initial_dataframe.assign(test=pd.Series(test_indexes).values)
+    df = initial_dataframe.assign(test=pd.Series(test_indexes).values)
+    #ipdb.set_trace()    
+    remove_not_in_train(df)
+
+    return df
 
     #return users_test
 
@@ -525,6 +555,18 @@ def make_test_fold_from_groups(groups, initial_dataframe,perc_test = 0.2, share_
     #print("{0} groups with test {1} groups with item {2} users with test {3} total users".format(groups_with_test,groups_with_items,l,len(users_test)))
     #return users_test
 
+
+
+def remove_not_in_train(dataframe):
+    
+    unique_items_train = dataframe[dataframe.test == 0].item_id.unique()
+    unique_items_test = dataframe[dataframe.test == 1].item_id.unique()
+    items = set(unique_items_test) - set(unique_items_train)
+    print(items)
+    #ipdb.set_trace()
+    for item in items:
+        dataframe.loc[dataframe.item_id == item,'test'] = 0
+        
 
 
 '''
@@ -537,8 +579,8 @@ by_group: defines if the partitioning will be performed considering the groups
 or the users (not used in this version)
 use_valid : defines if the partitioning will consider a
 '''
-def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,
-        by_group=True, num_folds = 1, use_valid=True):
+def construct_partitions_from_groups(groups,dataset,out_dir,grs_checkins=None,
+        perc_test=0.2, by_group=True, num_folds = 1, use_valid=True):
 
     if not dataset.__class__ == pd.DataFrame:
         dataset = read_ratings_file(dataset)
@@ -551,11 +593,16 @@ def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,
     #ipdb.set_trace()
     for part in range(1,num_folds+1):
 
+        print('Part'+str(part))
         if 'test' in dataset.columns:
             del(dataset['test'])
 
         #ipdb.set_trace()
-        dataset = make_test_fold_from_groups(groups,dataset,perc_test)
+        if not grs_checkins is None:
+            dataset = make_test_fold_from_groups(groups,dataset,grs_checkins,
+                                                perc_test)
+        else:
+            dataset = make_test_fold_from_groups(groups,dataset,perc_test)
         test_dataset = dataset[dataset.test == 1]
 
         test_file = os.path.join(out_dir,'u{}.test'.format(part))
@@ -588,7 +635,16 @@ def construct_partitions_from_groups(groups,dataset,out_dir,perc_test=0.2,
             base_and_val.reset_index(drop=True,inplace=True)
             perc_vali = perc_test / (1-perc_test)
             #ipdb.set_trace()
-            base_and_val = make_test_fold_from_groups(groups,base_and_val, perc_test = perc_vali)
+
+
+            if not grs_checkins is None:
+                base_and_val = make_test_fold_from_groups(groups,base_and_val,
+                                        grs_checkins=grs_checkins,
+                                        perc_test=perc_vali)
+            else:
+                base_and_val = make_test_fold_from_groups(groups,base_and_val, 
+                                                        perc_test = perc_vali)
+
 
             base_file = os.path.join(out_dir,'u{}.base'.format(part))
             val_file = os.path.join(out_dir,'u{}.validation'.format(part))
@@ -863,11 +919,113 @@ def construct_graph_from_matrix(mat,threshold=0.27):
     return G
 
 
+"""Verify if all the users in a group are present in the dataset used to train the recommendation
+algorithms."""
+def group_in_train(group,initial_dataframe):
+    for user in group:
+        if len(initial_dataframe[initial_dataframe.user_id == user]) == 0:
+            return False
+    return True
+
+
+def filter_groups(groups,df_grs_checkins,initial_dataframe,min_intersection=10):
+    """this function removes the groups whose have less than 10 checkins in
+    unique venues or that are not present in the initial_dataset, which
+    will be used to train the baseline recommendation algorithms"""
+    ipdb.set_trace()
+    #remove checkins in the same venue
+    df_grs_checkins.drop_duplicates(subset=['user_id','item_id'],inplace=True)
+    df_grs_checkins.reset_index(drop=True,inplace=True)
+
+
+    #remove the group checkins that do not occur in the initial dataset
+    #remembering that the groups where constructed in the full dataset and 
+    #we, initially, we do not know if the dataset in this stage has overcomed some
+    #pre processing
+    indexes_to_remove = np.zeros(len(df_grs_checkins))
+
+    for group_id in groups:
+        #print(group_id)
+        grp_intersect_init_df = utils.group_intersection(groups[group_id],initial_dataframe)
+        items_group_checkins = df_grs_checkins[df_grs_checkins.user_id == group_id]['item_id'].values
+
+        for item in items_group_checkins:
+            if not item in grp_intersect_init_df:
+                grp_item_idx = df_grs_checkins[(df_grs_checkins.user_id == group_id) &
+                                              (df_grs_checkins.item_id == item)].index
+
+                indexes_to_remove[grp_item_idx] = 1
+    
+    #ipdb.set_trace()
+    df_grs_checkins = df_grs_checkins.assign(to_remove=pd.Series(indexes_to_remove).values)
+    df_grs_checkins = df_grs_checkins[df_grs_checkins.to_remove == 0]
+    #df_grs_checkins.drop(indexes_to_remove,inplace=True)
+    df_grs_checkins.reset_index(drop=True,inplace=True)
+
+
+    #count groups checkins
+    grs_checkins_counts = df_grs_checkins.groupby(by=['user_id']).apply(len)
+
+    #create a dataframe to merge with the original groups checkin
+    ipdb.set_trace()
+    grs_checkins_counts = pd.DataFrame({'user_id': list(range(len(grs_checkins_counts))),
+                    'num_checkins' : grs_checkins_counts.values})
+    
+    #merge the tow dataframes
+    df_grs_checkins = df_grs_checkins.merge(right=grs_checkins_counts, 
+                        on='user_id',how='left')
+    
+    #grs_checkins_counts_to_remove = grs_checkins_counts[grs_checkins_counts.num_checkins < 10]
+    #ipdb.set_trace()
+    #TODO prosseguir daqui
+    #[groups.pop(gid) for gid in grs_checkins_counts_to_remove.user_id.unique()]
+    df_grs_checkins_to_maintain = df_grs_checkins[df_grs_checkins.num_checkins >= args.min_group_items].sort_values(by='user_id')
+
+    group_ids_to_remove = []
+    for group_id in df_grs_checkins_to_maintain.user_id.unique():
+        if not group_in_train(groups[group_id],initial_dataframe):
+            print(group_id)
+            #ipdb.set_trace()
+            indexes_to_remove = df_grs_checkins_to_maintain[df_grs_checkins_to_maintain.user_id == group_id].index
+            df_grs_checkins_to_maintain.drop(indexes_to_remove,inplace=True)
+            group_ids_to_remove.append(group_id)
+
+    #for grp in group_ids_to_remove:
+    #    groups.pop(grp)
+
+
+
+
+    #construct indexes to the new groups
+    new_indexes = pd.DataFrame(
+                    {'user_id':df_grs_checkins_to_maintain.user_id.unique(),
+                    'new_id':list(range(
+                    len(df_grs_checkins_to_maintain.user_id.unique())))})
+
+    #ipdb.set_trace()
+    
+    df_grs_checkins_to_maintain = df_grs_checkins_to_maintain.merge(
+                                    right=new_indexes,on='user_id',how='left')
+
+
+    new_groups = {new_id:groups[old_id] for new_id,old_id in zip(
+                                           new_indexes.new_id.unique(),
+                                           new_indexes.user_id.unique())}
+
+    df_grs_checkins_to_maintain['user_id'] =  df_grs_checkins_to_maintain['new_id']
+    del(df_grs_checkins_to_maintain['new_id'])
+
+    #ipdb.set_trace()
+    return new_groups,df_grs_checkins_to_maintain
+    
+    
+
 def run(dataset,test_dataset,num_groups,group_size,threshold,groups_file="",
         num_processes=1,strong=False,similarity_function=pearsonr):
 
+    if type(dataset) == str:
+        dataset = read_ratings_file(dataset)
 
-    dataset = read_ratings_file(dataset)
     '''if test_dataset:
         test_dataset = read_ratings_file(test_dataset)'''
     #for group_size in [3,4,5]:
@@ -950,6 +1108,18 @@ def arg_parse():
         help='Number of threads')
     p.add_argument('--strong',action='store_true',
         help='This option enables the computation of "strong" groups. i.e. for an user be inserted in this group it has to be similar to all group members')
+
+    p.add_argument('--no_grs_filter',action='store_true',
+        help='When set the groups will not be filtered whith respect to size')
+
+    p.add_argument('--groups_file',type=str,default='',
+        help = 'When used this parameter indicates that the groups are already constructed.' \
+                'the parameter sets the path to the groups_file')
+
+    p.add_argument('--gw_chk',type=str,
+        help='File containing the gowalla groups checkins. This file will '\
+        'be used both to filter the groups and to construct the folds')
+
     #p.add_argument('-f','--func',type=str, default = pearsonr
     #    help='Similarity function to be used when computing users correlarion. Options: pearsonr,cosine,jaccard')
     parsed = p.parse_args()
@@ -976,13 +1146,48 @@ if __name__ == "__main__":
 
     if not os.path.isdir(args.out_dir):
         os.mkdir(args.out_dir)
+        #save_groups(groups,groups_file)
+    
 
-    if args.strong:
-        groups_file = os.path.join(args.out_dir,"{0}.groups_ng{1}_sz{2}_thresh{3}_strong".format(args.part,args.num_groups,args.group_size,args.t_value))
+    train_df = read_ratings_file(train)
+    
+    if args.groups_file:
+        groups = utils.read_groups(args.groups_file,return_dict=True)
+        if not args.no_grs_filter:
+            
+            #I'm calling the group id as user id to use the functions in utils
+            #whithout modification
+            df_groups_checkins = pd.read_csv(args.gw_chk,header=None,
+                names=['user_id','item_id','timestamp'],sep='\t')
+            
+            groups_filtered,df_groups_checkins_filtered = filter_groups(
+                                                            groups,
+                                                            df_groups_checkins,
+                                                            train_df,
+                                                            min_intersection=10)
+
+
+            grp_base_name = os.path.basename(args.groups_file)
+            save_groups(groups_filtered,os.path.join(args.out_dir,
+                                                    grp_base_name+'_filtered'))
+            #ipdb.set_trace()
+            chk_filtered_file = os.path.join(args.out_dir,'groups_checkins_filtered.data')
+            df_groups_checkins_filtered.to_csv(chk_filtered_file,
+                                                header=None, index=False, 
+                                                sep='\t')
+                                                        
+            construct_partitions_from_groups(groups_filtered,train,args.out_dir,
+                grs_checkins = df_groups_checkins_filtered, perc_test=0.2,
+                by_group=True, use_valid=True,num_folds=args.num_parts)
+
     else:
-        groups_file = os.path.join(args.out_dir,"{0}.groups_ng{1}_sz{2}_thresh{3}".format(args.part,args.num_groups,args.group_size,args.t_value))
+        if args.strong:
+            groups_file = os.path.join(args.out_dir,"{0}.groups_ng{1}_sz{2}_thresh{3}_strong".format(args.part,args.num_groups,args.group_size,args.t_value))
+        else:
+            groups_file = os.path.join(args.out_dir,"{0}.groups_ng{1}_sz{2}_thresh{3}".format(args.part,args.num_groups,args.group_size,args.t_value))
 
 
-    groups = run(train,test,args.num_groups,args.group_size,args.t_value,groups_file,args.num_proc,args.strong,similarity_function=args.simi_func)
-    save_groups(groups,groups_file)
-    construct_partitions_from_groups(groups,train,args.out_dir,perc_test=0.2,by_group=True, use_valid=True,num_folds=args.num_parts)
+        groups = run(train_df,test,args.num_groups,args.group_size,args.t_value,groups_file,args.num_proc,args.strong,similarity_function=args.simi_func)
+        save_groups(groups,groups_file)
+
+        construct_partitions_from_groups(groups,train,args.out_dir,perc_test=0.2,by_group=True, use_valid=True,num_folds=args.num_parts)

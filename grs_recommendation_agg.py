@@ -13,6 +13,7 @@ import groups_generator as gg
 import ipdb
 import argparse
 import glob
+import utils
 from collections import defaultdict
 
 
@@ -76,6 +77,32 @@ def remove_items_in_train(train_DF,group,rank):
     return rank
 
 
+
+'''
+Receives a list of recommendation rankings, each containing the 
+recommended items and their respective scores, attributed by
+the recommendation algorithms.
+
+Returns the same ranking with the scores normalized in the [0,1] inteval.
+Normalization are done in each rank individually
+'''
+def normalize_scores(rec_rankings):
+
+    norm_rec_rankings = []
+
+    for rank in rec_rankings:
+        scores = [score for _,score in rank]
+        max_s = max(scores)
+        min_s = min(scores)
+        normalized_rank = [(item,(score-min_s)/(max_s-min_s)) for item,score in rank]
+        norm_rec_rankings.append(normalized_rank)
+
+
+    return norm_rec_rankings
+
+
+
+
 '''
 input:
 rec_rankings: reveives a set of rankings recommended to the users of a group
@@ -87,6 +114,8 @@ TODO: verify if we need to normalize the items scores
 
 def agg_ranking_least_misery(rec_rankings,group,train_DF,i2sug=10):
     averages = {}
+    rec_rankings = normalize_scores(rec_rankings)
+    #ipdb.set_trace()
     #Loop through users in the group and their recommend rankings
     for rank in rec_rankings:
         for item,item_score in rank:
@@ -117,6 +146,7 @@ TODO: verify if we need to normalize the items scores
 '''
 def agg_ranking_average(rec_rankings,group,train_DF,i2sug=10):
     averages = {}
+    rec_rankings = normalize_scores(rec_rankings)
     for rank in rec_rankings:
         for item,item_score in rank:
             if item in averages:
@@ -240,7 +270,10 @@ def oraculus(rec_rankings,group,train_DF,test_DF,i2sug=10):
     #group ground truth. i.e the items shared by the members of the group in the test set
 
     intersection_test = list(gg.group_intersection(group,test_DF))
-    intersection_recomm = list(utils.rank_union(rec_rankings))
+    try:
+        intersection_recomm = list(utils.rank_union(rec_rankings))
+    except:
+        ipdb.set_trace()
     #intersection_recomm = list(rank_intersection(rec_rankings))
     #ipdb.set_trace()
     group_gt = [(x,1.0) for x in intersection_recomm if x in intersection_test]
@@ -288,7 +321,7 @@ def parse_args():
         'all the recommenders in the base_dir will be used')
     p.add_argument('--base_rec',type=str,
         help='The algorithm currently used in the group recommendation.'
-             'Usually is one of the algorithms in args.base_recs')
+             'Usually it is one of the algorithms in args.base_recs')
     p.add_argument('--groups_file',type=str,required=True,
         help='The file containing the groups of users to whom the recommendation will be made')
     p.add_argument('--test_file', type=str,
@@ -316,7 +349,7 @@ def parse_args():
     #we use the same groups for all partitions
     #parsed.groups_file = parsed.groups_file.replace('u1',parsed.part)
      
-    file_regex = r".*u[1-5]-([a-z A-Z]*)"
+    file_regex = r".*u[1-5]-([a-z A-Z _]*)"
     if not parsed.base_recs:
         recs_in_dir = set().union([re.match(file_regex,rec).groups()[0] \
                         for rec in sorted(glob.glob(os.path.join(parsed.base_dir,"*.out")))])
@@ -382,7 +415,7 @@ if __name__ == '__main__':
 
     rec_partitions = [sorted(glob.glob(os.path.join(args.base_dir,"*"+recomm+".out"))) \
         for recomm in args.base_recs]
-
+    #ipdb.set_trace()
     num_partitions = len(rec_partitions[0])
 
     #base_recs_names = [os.path.basename(rec) for rec in rec_partitions]

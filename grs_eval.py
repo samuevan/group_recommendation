@@ -254,8 +254,7 @@ if __name__ == "__main__":
     test_file = sys.argv[3]
 
     groups = read_groups(groups_file)
-
-
+    #ipdb.set_trace()
 
     files = sorted(glob.glob(os.path.join(basedir,'*.gout')))
     #ipdb.set_trace()
